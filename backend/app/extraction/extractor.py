@@ -77,8 +77,10 @@ def extract_text_from_pil_image(image: Image.Image) -> str:
         return ""
 
     try:
-        # RapidOCR accepts PIL Image, numpy array, or path
-        ocr_result, _ = engine(image)
+        import numpy as np
+        # Convert PIL Image to numpy RGB array for RapidOCR
+        img_np = np.array(image.convert("RGB"))
+        ocr_result, _ = engine(img_np)
         if not ocr_result:
             return ""
         
