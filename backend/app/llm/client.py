@@ -45,6 +45,22 @@ def clean_json_string(text: str) -> str:
     return text
 
 
+def safe_to_float(val: Any) -> Optional[float]:
+    """Safely convert arbitrary values or strings like '<0.5' / '45 yrs' to float."""
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    try:
+        cleaned = re.sub(r"[<>=]", "", str(val)).strip()
+        num_match = re.search(r"[-+]?[0-9]*\.?[0-9]+", cleaned)
+        if num_match:
+            return float(num_match.group(0))
+        return None
+    except (ValueError, TypeError):
+        return None
+
+
 def parse_and_validate_extraction(
     json_str: str,
     raw_text: str,
@@ -55,10 +71,10 @@ def parse_and_validate_extraction(
     cleaned = clean_json_string(json_str)
     data = json.loads(cleaned)
 
-    patient_raw = data.get("patient_info", {})
+    patient_raw = data.get("patient_info") or {}
     patient_info = PatientInfo(
         name=patient_raw.get("name"),
-        age=float(patient_raw["age"]) if patient_raw.get("age") is not None else None,
+        age=safe_to_float(patient_raw.get("age")),
         gender=patient_raw.get("gender"),
         report_date=patient_raw.get("report_date"),
         lab_name=patient_raw.get("lab_name"),
@@ -68,7 +84,8 @@ def parse_and_validate_extraction(
     low_confidence_count = 0
     extracted_canonical_ids = set()
 
-    for item in data.get("biomarkers", []):
+    raw_biomarkers = data.get("biomarkers") or []
+    for item in raw_biomarkers:
         try:
             standard_id_str = str(item.get("standard_id", "")).lower().strip()
             # Map or fallback to OTHER if not in CanonicalBiomarker
@@ -79,19 +96,22 @@ def parse_and_validate_extraction(
 
             ref_raw = item.get("reference_range") or {}
             ref_range = ReferenceRange(
-                low=float(ref_raw["low"]) if ref_raw.get("low") is not None else None,
-                high=float(ref_raw["high"]) if ref_raw.get("high") is not None else None,
+                low=safe_to_float(ref_raw.get("low")),
+                high=safe_to_float(ref_raw.get("high")),
                 text=ref_raw.get("text"),
             )
 
-            confidence = float(item.get("confidence", 0.9))
+            confidence = safe_to_float(item.get("confidence"))
+            if confidence is None:
+                confidence = 0.9
+
             flag_str = str(item.get("flag", "normal")).lower()
             try:
                 flag = BiomarkerFlag(flag_str)
             except ValueError:
                 flag = BiomarkerFlag.NORMAL
 
-            value = float(item["value"]) if item.get("value") is not None else None
+            value = safe_to_float(item.get("value"))
 
             bio_item = BiomarkerItem(
                 standard_id=standard_id,
@@ -133,29 +153,30 @@ def parse_and_validate_extraction(
 
 
 # Comprehensive Heuristic Fallback for local testing / offline runs
+# Uses horizontal whitespace [^\S\r\n]* to prevent cross-line bleeding on tabular OCR outputs
 HEURISTIC_PATTERNS = [
     # standard_id, display_name, regex, unit, std_unit, (low, high)
-    ("albumin", "Serum Albumin", r"(?:serum\s+)?albumin\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(g/dl|g/l)?", "g/dL", "g/dL", (3.5, 5.2)),
-    ("creatinine", "Serum Creatinine", r"(?:serum\s+)?creatinine\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl|umol/l)?", "mg/dL", "mg/dL", (0.7, 1.3)),
-    ("glucose_fasting", "Fasting Blood Glucose", r"(?:fasting\s+(?:blood\s+)?(?:sugar|glucose)|glucose[,\s]+fasting)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl|mmol/l)?", "mg/dL", "mg/dL", (70.0, 99.0)),
-    ("crp", "C-Reactive Protein", r"(?:hs-?crp|c-reactive protein|crp)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/l|mg/dl)?", "mg/L", "mg/L", (0.0, 3.0)),
-    ("lymphocyte_pct", "Lymphocytes Percent", r"(?:lymphocytes?|lymph)\s*(?:percent|%)?\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(%)?", "%", "%", (20.0, 40.0)),
-    ("mcv", "Mean Corpuscular Volume", r"\bmcv\b\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(fl)?", "fL", "fL", (80.0, 100.0)),
-    ("rdw", "Red Cell Distribution Width", r"\brdw(?:-cv)?\b\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(%)?", "%", "%", (11.5, 14.5)),
-    ("alp", "Alkaline Phosphatase", r"(?:alkaline phosphatase|\balp\b)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(u/l|iu/l)?", "U/L", "U/L", (44.0, 147.0)),
-    ("wbc", "Total Leukocyte Count", r"(?:wbc|tlc|total leukocyte count|white blood cell count)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:cells/cumm|10\^3/ul|/ul|x10\^9/l)?", "10^3/uL", "10^3/uL", (4.0, 11.0)),
-    ("hemoglobin", "Hemoglobin", r"(?:hemoglobin|\bhb\b)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(g/dl)?", "g/dL", "g/dL", (12.0, 17.5)),
-    ("platelets", "Platelet Count", r"(?:platelet count|\bplatelets\b)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:lakh/cumm|10\^3/ul|/ul)?", "10^3/uL", "10^3/uL", (150.0, 450.0)),
-    ("hba1c", "HbA1c", r"\bhba1c\b\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(%)?", "%", "%", (4.0, 5.6)),
-    ("cholesterol_total", "Total Cholesterol", r"(?:total\s+cholesterol|cholesterol[,\s]+total)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl)?", "mg/dL", "mg/dL", (125.0, 200.0)),
-    ("cholesterol_hdl", "HDL Cholesterol", r"\bhdl(?:-cholesterol)?\b\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl)?", "mg/dL", "mg/dL", (40.0, 60.0)),
-    ("cholesterol_ldl", "LDL Cholesterol", r"\bldl(?:-cholesterol)?\b\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl)?", "mg/dL", "mg/dL", (0.0, 100.0)),
-    ("triglycerides", "Triglycerides", r"(?:triglycerides|\btg\b)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl)?", "mg/dL", "mg/dL", (0.0, 150.0)),
-    ("bilirubin_total", "Total Bilirubin", r"(?:total\s+bilirubin|bilirubin[,\s]+total)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl)?", "mg/dL", "mg/dL", (0.2, 1.2)),
-    ("ast_sgot", "AST / SGOT", r"(?:ast|sgot)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(u/l)?", "U/L", "U/L", (10.0, 40.0)),
-    ("alt_sgpt", "ALT / SGPT", r"(?:alt|sgpt)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(u/l)?", "U/L", "U/L", (7.0, 56.0)),
-    ("bun", "Blood Urea Nitrogen", r"(?:blood urea nitrogen|\bbun\b|urea)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl)?", "mg/dL", "mg/dL", (7.0, 20.0)),
-    ("uric_acid", "Uric Acid", r"uric acid\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl)?", "mg/dL", "mg/dL", (3.5, 7.2)),
+    ("albumin", "Serum Albumin", r"(?:serum[^\S\r\n]+)?albumin[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(g/dl|g/l)?", "g/dL", "g/dL", (3.5, 5.2)),
+    ("creatinine", "Serum Creatinine", r"(?:serum[^\S\r\n]+)?creatinine[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(mg/dl|umol/l)?", "mg/dL", "mg/dL", (0.7, 1.3)),
+    ("glucose_fasting", "Fasting Blood Glucose", r"(?:fasting[^\S\r\n]+(?:blood[^\S\r\n]+)?(?:sugar|glucose)|glucose[,\s]+fasting)[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(mg/dl|mmol/l)?", "mg/dL", "mg/dL", (70.0, 99.0)),
+    ("crp", "C-Reactive Protein", r"(?:hs-?crp|c-reactive protein|crp)[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(mg/l|mg/dl)?", "mg/L", "mg/L", (0.0, 3.0)),
+    ("lymphocyte_pct", "Lymphocytes Percent", r"(?:lymphocytes?|lymph)[^\S\r\n]*(?:percent|%)?[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(%)?", "%", "%", (20.0, 40.0)),
+    ("mcv", "Mean Corpuscular Volume", r"\bmcv\b[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(fl)?", "fL", "fL", (80.0, 100.0)),
+    ("rdw", "Red Cell Distribution Width", r"\brdw(?:-cv)?\b[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(%)?", "%", "%", (11.5, 14.5)),
+    ("alp", "Alkaline Phosphatase", r"(?:alkaline phosphatase|\balp\b)[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(u/l|iu/l)?", "U/L", "U/L", (44.0, 147.0)),
+    ("wbc", "Total Leukocyte Count", r"(?:wbc|tlc|total leukocyte count|white blood cell count)[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(?:cells/cumm|10\^3/ul|/ul|x10\^9/l)?", "10^3/uL", "10^3/uL", (4.0, 11.0)),
+    ("hemoglobin", "Hemoglobin", r"(?:hemoglobin|\bhb\b)[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(g/dl)?", "g/dL", "g/dL", (12.0, 17.5)),
+    ("platelets", "Platelet Count", r"(?:platelet count|\bplatelets\b)[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(?:lakh/cumm|10\^3/ul|/ul)?", "10^3/uL", "10^3/uL", (150.0, 450.0)),
+    ("hba1c", "HbA1c", r"\bhba1c\b[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(%)?", "%", "%", (4.0, 5.6)),
+    ("cholesterol_total", "Total Cholesterol", r"(?:total[^\S\r\n]+cholesterol|cholesterol[,\s]+total)[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(mg/dl)?", "mg/dL", "mg/dL", (125.0, 200.0)),
+    ("cholesterol_hdl", "HDL Cholesterol", r"\bhdl(?:-cholesterol)?[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(mg/dl)?", "mg/dL", "mg/dL", (40.0, 60.0)),
+    ("cholesterol_ldl", "LDL Cholesterol", r"\bldl(?:-cholesterol)?[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(mg/dl)?", "mg/dL", "mg/dL", (0.0, 100.0)),
+    ("triglycerides", "Triglycerides", r"(?:triglycerides|\btg\b)[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(mg/dl)?", "mg/dL", "mg/dL", (0.0, 150.0)),
+    ("bilirubin_total", "Total Bilirubin", r"(?:total[^\S\r\n]+bilirubin|bilirubin[,\s]+total)[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(mg/dl)?", "mg/dL", "mg/dL", (0.2, 1.2)),
+    ("ast_sgot", "AST / SGOT", r"(?:ast|sgot)[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(u/l)?", "U/L", "U/L", (10.0, 40.0)),
+    ("alt_sgpt", "ALT / SGPT", r"(?:alt|sgpt)[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(u/l)?", "U/L", "U/L", (7.0, 56.0)),
+    ("bun", "Blood Urea Nitrogen", r"(?:blood[^\S\r\n]+urea[^\S\r\n]+nitrogen|\bbun\b|urea)[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(mg/dl)?", "mg/dL", "mg/dL", (7.0, 20.0)),
+    ("uric_acid", "Uric Acid", r"uric[^\S\r\n]+acid[^\S\r\n]*[:|]?[^\S\r\n]*([0-9]+(?:\.[0-9]+)?)[^\S\r\n]*(mg/dl)?", "mg/dL", "mg/dL", (3.5, 7.2)),
 ]
 
 

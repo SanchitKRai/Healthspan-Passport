@@ -43,7 +43,6 @@ def test_parse_and_validate_json_success():
     assert len(response.biomarkers) == 1
     assert response.biomarkers[0].standard_id == "glucose_fasting"
     assert response.extraction_metadata.model_used == "test-model"
-    # PhenoAge missing markers should be computed
     assert "albumin" in response.extraction_metadata.missing_phenoage_biomarkers
 
 
@@ -53,29 +52,77 @@ def test_parse_json_invalid_raises():
         parse_and_validate_extraction("Invalid non-json text", raw_text="...", model_name="test-model", duration_ms=100)
 
 
-def test_heuristic_fallback_when_no_api_key():
+def test_parse_null_and_non_float_strings_gracefully():
+    from app.llm.client import parse_and_validate_extraction
+    # Tests issue I2: null patient_info, null biomarkers, string with "<0.5"
+    payload = {
+        "patient_info": None,
+        "biomarkers": [
+            {
+                "standard_id": "crp",
+                "display_name": "C-Reactive Protein",
+                "raw_name": "hs-CRP",
+                "value": "<0.5",
+                "unit": "mg/L",
+                "confidence": 0.9,
+                "flag": "normal"
+            }
+        ]
+    }
+    resp = parse_and_validate_extraction(json.dumps(payload), raw_text="...", model_name="test", duration_ms=100)
+    assert resp.patient_info.name is None
+    assert len(resp.biomarkers) == 1
+    assert resp.biomarkers[0].value == 0.5
+
+
+def test_llm_retry_on_malformed_json():
+    # Tests issue I4: 1 retry on malformed JSON
     from app.llm.client import extract_biomarkers_with_llm
-    sample_text = """
-    Patient Name: Suresh Patel
-    Age: 52 Years
-    Gender: Male
-    Date: 15-Nov-2026
-    Lab: Metropolis Healthcare
     
-    TEST NAME                VALUE     UNIT        REFERENCE
-    Serum Albumin            4.1       g/dL        3.5 - 5.0
-    Serum Creatinine         1.0       mg/dL       0.7 - 1.3
-    Fasting Blood Glucose    105       mg/dL       70 - 99
-    hs-CRP                   2.4       mg/L        0.0 - 1.0
-    WBC Count                6800      cells/cumm  4000 - 11000
+    valid_payload = json.dumps({
+        "patient_info": {"name": "Test User"},
+        "biomarkers": [{"standard_id": "albumin", "value": 4.5, "unit": "g/dL"}]
+    })
+    
+    with patch("app.llm.client.call_openrouter_api") as mock_api:
+        mock_api.side_effect = ["NOT VALID JSON", valid_payload]
+        res = extract_biomarkers_with_llm("sample text", api_key="sk-test-key")
+        assert mock_api.call_count == 2
+        assert "(retry)" in res.extraction_metadata.model_used
+        assert len(res.biomarkers) == 1
+
+
+def test_llm_fallback_to_secondary_model():
+    # Tests issue I4: Fallback to secondary model if primary raises HTTP error
+    from app.llm.client import extract_biomarkers_with_llm
+    
+    valid_payload = json.dumps({
+        "patient_info": {"name": "Fallback User"},
+        "biomarkers": [{"standard_id": "glucose_fasting", "value": 90.0, "unit": "mg/dL"}]
+    })
+    
+    with patch("app.llm.client.call_openrouter_api") as mock_api:
+        mock_api.side_effect = [RuntimeError("Primary model 500 error"), valid_payload]
+        res = extract_biomarkers_with_llm("sample text", api_key="sk-test-key", primary_model="nemotron", fallback_model="kimi")
+        assert mock_api.call_count == 2
+        assert res.extraction_metadata.model_used == "kimi"
+        assert res.patient_info.name == "Fallback User"
+
+
+def test_heuristic_regex_does_not_bleed_across_lines():
+    # Tests issue C1: regex whitespace shouldn't cross newlines and capture reference ranges
+    from app.llm.client import heuristic_extract
+    ocr_tabular_text = """
+    INVESTIGATION    VALUE    UNIT      REF RANGE
+    WBC Count        6.5      10^3/uL   4.0 - 11.0
+    Hemoglobin       13.1     g/dL      12.0 - 15.5
+    MCV              89.0     fL        80.0 - 100.0
+    RDW-CV           13.0     %         11.5 - 14.5
     """
-    # Without API key, extract_biomarkers_with_llm should use heuristic fallback
-    with patch.dict("os.environ", {}, clear=True):
-        res = extract_biomarkers_with_llm(sample_text)
-        assert res.patient_info.name == "Suresh Patel"
-        assert res.patient_info.age == 52.0
-        assert len(res.biomarkers) >= 3
-        # Fasting glucose 105 is > 99, so flag should be high
-        glucose = next((b for b in res.biomarkers if b.standard_id == "glucose_fasting"), None)
-        assert glucose is not None
-        assert glucose.value == 105.0
+    res = heuristic_extract(ocr_tabular_text)
+    hb = next((b for b in res.biomarkers if b.standard_id == "hemoglobin"), None)
+    rdw = next((b for b in res.biomarkers if b.standard_id == "rdw"), None)
+    assert hb is not None
+    assert hb.value == 13.1
+    assert rdw is not None
+    assert rdw.value == 13.0

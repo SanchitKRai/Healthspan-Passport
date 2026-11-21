@@ -70,6 +70,32 @@ class BoundingBox(BaseModel):
     y1: float = 0.0
 
 
+# Biologically plausible physiological limits (below or above triggers critical review)
+PHYSIOLOGICAL_LIMITS = {
+    CanonicalBiomarker.ALBUMIN: (1.0, 7.5),
+    CanonicalBiomarker.CREATININE: (0.2, 20.0),
+    CanonicalBiomarker.GLUCOSE_FASTING: (30.0, 600.0),
+    CanonicalBiomarker.CRP: (0.0, 300.0),
+    CanonicalBiomarker.LYMPHOCYTE_PCT: (1.0, 95.0),
+    CanonicalBiomarker.MCV: (40.0, 150.0),
+    CanonicalBiomarker.RDW: (8.0, 35.0),
+    CanonicalBiomarker.ALP: (10.0, 1500.0),
+    CanonicalBiomarker.WBC: (0.5, 100.0),
+    CanonicalBiomarker.HEMOGLOBIN: (3.0, 25.0),
+    CanonicalBiomarker.PLATELETS: (10.0, 1500.0),
+    CanonicalBiomarker.HBA1C: (3.0, 20.0),
+    CanonicalBiomarker.CHOLESTEROL_TOTAL: (50.0, 800.0),
+    CanonicalBiomarker.CHOLESTEROL_HDL: (10.0, 150.0),
+    CanonicalBiomarker.CHOLESTEROL_LDL: (10.0, 600.0),
+    CanonicalBiomarker.TRIGLYCERIDES: (20.0, 2000.0),
+    CanonicalBiomarker.BILIRUBIN_TOTAL: (0.1, 40.0),
+    CanonicalBiomarker.AST_SGOT: (2.0, 2000.0),
+    CanonicalBiomarker.ALT_SGPT: (2.0, 2000.0),
+    CanonicalBiomarker.BUN: (2.0, 200.0),
+    CanonicalBiomarker.URIC_ACID: (1.0, 25.0),
+}
+
+
 class BiomarkerItem(BaseModel):
     standard_id: CanonicalBiomarker
     display_name: str
@@ -86,11 +112,22 @@ class BiomarkerItem(BaseModel):
 
     @model_validator(mode="after")
     def evaluate_needs_review(self) -> "BiomarkerItem":
-        # Any value with confidence < 0.8 requires manual confirmation
+        # Rule 1: Confidence < 0.8
         if self.confidence < 0.8:
             self.needs_review = True
+
+        # Rule 2: Missing / unparsed value
         if self.value is None:
             self.needs_review = True
+            return self
+
+        # Rule 3: Physiological limit validation (Contract Rule 3)
+        if self.standard_id in PHYSIOLOGICAL_LIMITS:
+            min_val, max_val = PHYSIOLOGICAL_LIMITS[self.standard_id]
+            if self.value < min_val or self.value > max_val:
+                self.needs_review = True
+                self.flag = BiomarkerFlag.CRITICAL
+
         return self
 
 

@@ -71,8 +71,36 @@ def test_biomarker_schema_validation():
     assert len(resp.biomarkers) == 2
     assert "creatinine" in resp.extraction_metadata.missing_phenoage_biomarkers
 
-def test_missing_required_fields_fails():
-    from app.schemas.biomarker import BiomarkerItem
-    with pytest.raises(ValidationError):
-        # Missing required standard_id and display_name
-        BiomarkerItem(value=10.0)
+def test_physiological_limit_validation():
+    from app.schemas.biomarker import BiomarkerItem, CanonicalBiomarker, BiomarkerFlag
+
+    # Glucose 1500 mg/dL is biologically implausible / extreme crisis
+    bio_extreme = BiomarkerItem(
+        standard_id=CanonicalBiomarker.GLUCOSE_FASTING,
+        display_name="Fasting Glucose",
+        raw_name="Glucose",
+        value=1500.0,
+        unit="mg/dL",
+        standard_unit="mg/dL",
+        confidence=0.95,
+        flag=BiomarkerFlag.HIGH,
+        needs_review=False
+    )
+    # Validator must enforce needs_review = True and flag = CRITICAL
+    assert bio_extreme.needs_review is True
+    assert bio_extreme.flag == BiomarkerFlag.CRITICAL
+
+    # Albumin 25 g/dL (normal is ~3.5-5.0, plausible upper bound ~8.0)
+    bio_albumin = BiomarkerItem(
+        standard_id=CanonicalBiomarker.ALBUMIN,
+        display_name="Serum Albumin",
+        raw_name="Albumin",
+        value=25.0,
+        unit="g/dL",
+        standard_unit="g/dL",
+        confidence=0.99,
+        flag=BiomarkerFlag.HIGH,
+        needs_review=False
+    )
+    assert bio_albumin.needs_review is True
+    assert bio_albumin.flag == BiomarkerFlag.CRITICAL

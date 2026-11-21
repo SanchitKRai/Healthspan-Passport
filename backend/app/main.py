@@ -41,12 +41,12 @@ def health_check() -> Dict[str, str]:
 
 
 @app.post("/api/extract", response_model=ExtractionResponse)
-async def extract_report(file: UploadFile = File(...)) -> ExtractionResponse:
+def extract_report(file: UploadFile = File(...)) -> ExtractionResponse:
     """Upload a PDF or image blood test report and extract structured biomarker data."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename missing from upload")
 
-    contents = await file.read()
+    contents = file.file.read()
     if not contents:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
