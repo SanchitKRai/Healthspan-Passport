@@ -1,10 +1,8 @@
 /**
- * Healthspan Passport - Biomarker JSON Schema Specification (Contract v1.0)
- * Corresponds to docs/BIOMARKER_SCHEMA.md and backend/app/schemas/biomarker.py
+ * Healthspan Passport - Biomarker JSON Schema Specification (Contract v1.0 & Analysis Extensions)
  */
 
 export enum CanonicalBiomarker {
-  // Core PhenoAge Biomarkers (9 Blood Markers + Chronological Age)
   ALBUMIN = "albumin",
   CREATININE = "creatinine",
   GLUCOSE_FASTING = "glucose_fasting",
@@ -14,8 +12,6 @@ export enum CanonicalBiomarker {
   RDW = "rdw",
   ALP = "alp",
   WBC = "wbc",
-
-  // Additional Routine Preventive & Metabolic Biomarkers
   HEMOGLOBIN = "hemoglobin",
   PLATELETS = "platelets",
   HBA1C = "hba1c",
@@ -94,5 +90,38 @@ export interface SampleReportItem {
   filename: string;
   label: string;
   format: "pdf" | "image";
-  description: string;
+  size_bytes?: number;
+}
+
+export interface PhenoAgeResult {
+  is_valid: boolean;
+  phenoage: number | null;
+  age_acceleration: number | null;
+  mortality_score_10yr: number | null;
+  missing_markers: string[];
+  message: string;
+}
+
+export interface RiskFlagItem {
+  category: string;
+  title: string;
+  status: "optimal" | "borderline" | "elevated";
+  markers: string[];
+  message: string;
+  recommendation: string;
+}
+
+export interface AnalysisRequest {
+  chronological_age: number;
+  patient_gender?: string | null;
+  biomarkers: BiomarkerItem[];
+}
+
+export interface AnalysisResponse {
+  chronological_age: number;
+  patient_gender?: string | null;
+  phenoage: PhenoAgeResult;
+  risk_flags: RiskFlagItem[];
+  normalized_biomarkers: BiomarkerItem[];
+  population_caveat: string;
 }

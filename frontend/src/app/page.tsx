@@ -1,36 +1,72 @@
 "use client";
 
 import React, { useState } from "react";
-import { ExtractionResponse } from "../types/biomarker";
+import { ExtractionResponse, AnalysisResponse } from "../types/biomarker";
 import { UploadSection } from "../components/UploadSection";
 import { PatientSummary } from "../components/PatientSummary";
-import { BiomarkerTable } from "../components/BiomarkerTable";
+import { ConfirmationTable } from "../components/ConfirmationTable";
+import { PhenoAgeCard } from "../components/PhenoAgeCard";
+import { RiskFlagsSection } from "../components/RiskFlagsSection";
 
 export default function Home() {
-  const [data, setData] = useState<ExtractionResponse | null>(null);
+  const [extractedData, setExtractedData] = useState<ExtractionResponse | null>(null);
+  const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
+
+  const handleReset = () => {
+    setExtractedData(null);
+    setAnalysisData(null);
+  };
 
   return (
     <div>
-      <UploadSection onExtractionSuccess={(result) => setData(result)} />
+      {!extractedData && (
+        <UploadSection
+          onExtractionSuccess={(result) => {
+            setExtractedData(result);
+            setAnalysisData(null);
+          }}
+        />
+      )}
 
-      {data && (
-        <section className="mt-8">
+      {extractedData && (
+        <section>
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold">Extracted Biomarker Results</h2>
+            <div>
+              <h2 className="text-xl font-bold">Report Analysis & Human Confirmation</h2>
+              <p className="text-xs text-gray-500">Step 1: Review & confirm values. Step 2: View biological age & preventive risks.</p>
+            </div>
             <button
-              onClick={() => setData(null)}
-              className="text-xs bg-gray-200 px-3 py-1.5 rounded hover:bg-gray-300"
+              onClick={handleReset}
+              className="text-xs bg-gray-200 px-3 py-1.5 rounded hover:bg-gray-300 font-medium"
             >
-              Reset / New Upload
+              ← Upload Another Report
             </button>
           </div>
 
           <PatientSummary
-            patient={data.patient_info}
-            metadata={data.extraction_metadata}
+            patient={extractedData.patient_info}
+            metadata={extractedData.extraction_metadata}
           />
 
-          <BiomarkerTable biomarkers={data.biomarkers} />
+          {/* Analysis Dashboard (renders after user confirmation) */}
+          {analysisData && (
+            <div className="mb-8">
+              <PhenoAgeCard
+                phenoageResult={analysisData.phenoage}
+                chronologicalAge={analysisData.chronological_age}
+                populationCaveat={analysisData.population_caveat}
+              />
+
+              <RiskFlagsSection riskFlags={analysisData.risk_flags} />
+            </div>
+          )}
+
+          {/* Human-in-the-Loop Confirmation & Value Editing */}
+          <ConfirmationTable
+            initialBiomarkers={extractedData.biomarkers}
+            patient={extractedData.patient_info}
+            onAnalysisSuccess={(analysis) => setAnalysisData(analysis)}
+          />
         </section>
       )}
     </div>
