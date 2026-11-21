@@ -1,0 +1,316 @@
+import os
+import re
+import time
+import json
+import logging
+from typing import Optional, Dict, Any, Tuple
+import httpx
+
+from app.schemas.biomarker import (
+    ExtractionResponse,
+    PatientInfo,
+    BiomarkerItem,
+    ExtractionMetadata,
+    CanonicalBiomarker,
+    BiomarkerFlag,
+    ReferenceRange,
+    PHENOAGE_CORE_BIOMARKERS,
+)
+from app.llm.prompts import SYSTEM_PROMPT, build_extraction_prompt, build_retry_prompt
+
+logger = logging.getLogger(__name__)
+
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# Primary & Fallback model slugs verified on OpenRouter
+PRIMARY_MODEL = os.getenv("OPENROUTER_PRIMARY_MODEL", "nvidia/nemotron-3.5-lightning")
+FALLBACK_MODEL = os.getenv("OPENROUTER_FALLBACK_MODEL", "moonshotai/kimi-k2")
+
+
+def clean_json_string(text: str) -> str:
+    """Extract and clean JSON payload from LLM response text."""
+    text = text.strip()
+    
+    # 1. Check for markdown code fence pattern
+    fence_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+    if fence_match:
+        return fence_match.group(1).strip()
+    
+    # 2. Extract substring between outermost braces { ... }
+    first_brace = text.find("{")
+    last_brace = text.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        return text[first_brace : last_brace + 1].strip()
+        
+    return text
+
+
+def parse_and_validate_extraction(
+    json_str: str,
+    raw_text: str,
+    model_name: str,
+    duration_ms: int
+) -> ExtractionResponse:
+    """Parse JSON string and construct a valid ExtractionResponse."""
+    cleaned = clean_json_string(json_str)
+    data = json.loads(cleaned)
+
+    patient_raw = data.get("patient_info", {})
+    patient_info = PatientInfo(
+        name=patient_raw.get("name"),
+        age=float(patient_raw["age"]) if patient_raw.get("age") is not None else None,
+        gender=patient_raw.get("gender"),
+        report_date=patient_raw.get("report_date"),
+        lab_name=patient_raw.get("lab_name"),
+    )
+
+    biomarkers = []
+    low_confidence_count = 0
+    extracted_canonical_ids = set()
+
+    for item in data.get("biomarkers", []):
+        try:
+            standard_id_str = str(item.get("standard_id", "")).lower().strip()
+            # Map or fallback to OTHER if not in CanonicalBiomarker
+            try:
+                standard_id = CanonicalBiomarker(standard_id_str)
+            except ValueError:
+                standard_id = CanonicalBiomarker.OTHER
+
+            ref_raw = item.get("reference_range") or {}
+            ref_range = ReferenceRange(
+                low=float(ref_raw["low"]) if ref_raw.get("low") is not None else None,
+                high=float(ref_raw["high"]) if ref_raw.get("high") is not None else None,
+                text=ref_raw.get("text"),
+            )
+
+            confidence = float(item.get("confidence", 0.9))
+            flag_str = str(item.get("flag", "normal")).lower()
+            try:
+                flag = BiomarkerFlag(flag_str)
+            except ValueError:
+                flag = BiomarkerFlag.NORMAL
+
+            value = float(item["value"]) if item.get("value") is not None else None
+
+            bio_item = BiomarkerItem(
+                standard_id=standard_id,
+                display_name=item.get("display_name", standard_id.value.replace("_", " ").title()),
+                raw_name=item.get("raw_name", standard_id.value),
+                value=value,
+                unit=item.get("unit", ""),
+                standard_unit=item.get("standard_unit", item.get("unit", "")),
+                reference_range=ref_range,
+                confidence=confidence,
+                flag=flag,
+                needs_review=bool(item.get("needs_review", False) or confidence < 0.8 or value is None),
+                source_text=item.get("source_text"),
+            )
+            biomarkers.append(bio_item)
+            if bio_item.needs_review:
+                low_confidence_count += 1
+            if standard_id != CanonicalBiomarker.OTHER:
+                extracted_canonical_ids.add(standard_id.value)
+        except Exception as e:
+            logger.warning(f"Skipping malformed biomarker item: {item}. Error: {e}")
+
+    missing_phenoage = sorted(list(PHENOAGE_CORE_BIOMARKERS - extracted_canonical_ids))
+
+    metadata = ExtractionMetadata(
+        model_used=model_name,
+        extraction_duration_ms=duration_ms,
+        raw_text_length=len(raw_text),
+        total_biomarkers_found=len(biomarkers),
+        low_confidence_count=low_confidence_count,
+        missing_phenoage_biomarkers=missing_phenoage,
+    )
+
+    return ExtractionResponse(
+        patient_info=patient_info,
+        biomarkers=biomarkers,
+        extraction_metadata=metadata,
+    )
+
+
+# Comprehensive Heuristic Fallback for local testing / offline runs
+HEURISTIC_PATTERNS = [
+    # standard_id, display_name, regex, unit, std_unit, (low, high)
+    ("albumin", "Serum Albumin", r"(?:serum\s+)?albumin\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(g/dl|g/l)?", "g/dL", "g/dL", (3.5, 5.2)),
+    ("creatinine", "Serum Creatinine", r"(?:serum\s+)?creatinine\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl|umol/l)?", "mg/dL", "mg/dL", (0.7, 1.3)),
+    ("glucose_fasting", "Fasting Blood Glucose", r"(?:fasting\s+(?:blood\s+)?(?:sugar|glucose)|glucose[,\s]+fasting)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl|mmol/l)?", "mg/dL", "mg/dL", (70.0, 99.0)),
+    ("crp", "C-Reactive Protein", r"(?:hs-?crp|c-reactive protein|crp)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/l|mg/dl)?", "mg/L", "mg/L", (0.0, 3.0)),
+    ("lymphocyte_pct", "Lymphocytes Percent", r"(?:lymphocytes?|lymph)\s*(?:percent|%)?\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(%)?", "%", "%", (20.0, 40.0)),
+    ("mcv", "Mean Corpuscular Volume", r"\bmcv\b\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(fl)?", "fL", "fL", (80.0, 100.0)),
+    ("rdw", "Red Cell Distribution Width", r"\brdw(?:-cv)?\b\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(%)?", "%", "%", (11.5, 14.5)),
+    ("alp", "Alkaline Phosphatase", r"(?:alkaline phosphatase|\balp\b)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(u/l|iu/l)?", "U/L", "U/L", (44.0, 147.0)),
+    ("wbc", "Total Leukocyte Count", r"(?:wbc|tlc|total leukocyte count|white blood cell count)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:cells/cumm|10\^3/ul|/ul|x10\^9/l)?", "10^3/uL", "10^3/uL", (4.0, 11.0)),
+    ("hemoglobin", "Hemoglobin", r"(?:hemoglobin|\bhb\b)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(g/dl)?", "g/dL", "g/dL", (12.0, 17.5)),
+    ("platelets", "Platelet Count", r"(?:platelet count|\bplatelets\b)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:lakh/cumm|10\^3/ul|/ul)?", "10^3/uL", "10^3/uL", (150.0, 450.0)),
+    ("hba1c", "HbA1c", r"\bhba1c\b\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(%)?", "%", "%", (4.0, 5.6)),
+    ("cholesterol_total", "Total Cholesterol", r"(?:total\s+cholesterol|cholesterol[,\s]+total)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl)?", "mg/dL", "mg/dL", (125.0, 200.0)),
+    ("cholesterol_hdl", "HDL Cholesterol", r"\bhdl(?:-cholesterol)?\b\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl)?", "mg/dL", "mg/dL", (40.0, 60.0)),
+    ("cholesterol_ldl", "LDL Cholesterol", r"\bldl(?:-cholesterol)?\b\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl)?", "mg/dL", "mg/dL", (0.0, 100.0)),
+    ("triglycerides", "Triglycerides", r"(?:triglycerides|\btg\b)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl)?", "mg/dL", "mg/dL", (0.0, 150.0)),
+    ("bilirubin_total", "Total Bilirubin", r"(?:total\s+bilirubin|bilirubin[,\s]+total)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl)?", "mg/dL", "mg/dL", (0.2, 1.2)),
+    ("ast_sgot", "AST / SGOT", r"(?:ast|sgot)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(u/l)?", "U/L", "U/L", (10.0, 40.0)),
+    ("alt_sgpt", "ALT / SGPT", r"(?:alt|sgpt)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(u/l)?", "U/L", "U/L", (7.0, 56.0)),
+    ("bun", "Blood Urea Nitrogen", r"(?:blood urea nitrogen|\bbun\b|urea)\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl)?", "mg/dL", "mg/dL", (7.0, 20.0)),
+    ("uric_acid", "Uric Acid", r"uric acid\s*[:|]?\s*([0-9]+(?:\.[0-9]+)?)\s*(mg/dl)?", "mg/dL", "mg/dL", (3.5, 7.2)),
+]
+
+
+def heuristic_extract(raw_text: str, duration_ms: int = 50) -> ExtractionResponse:
+    """Fallback rule-based extractor when no LLM API key is present."""
+    # Extract patient metadata
+    name_match = re.search(r"(?:patient\s+name|name)\s*[:|]?\s*([A-Za-z\s\.]+?)(?:\r?\n|age|gender|,)", raw_text, re.IGNORECASE)
+    age_match = re.search(r"(?:age|yrs?|years?)\s*[:|]?\s*([0-9]{1,3})", raw_text, re.IGNORECASE)
+    gender_match = re.search(r"\b(male|female|other)\b", raw_text, re.IGNORECASE)
+    date_match = re.search(r"(?:date|collected)\s*[:|]?\s*([0-9]{1,4}[-/.][0-9]{1,2}[-/.][0-9]{2,4}|[0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4})", raw_text, re.IGNORECASE)
+    lab_match = re.search(r"(metropolis|dr\s*lal|apollo|quest|pathlabs|diagnostics|hospital|clinic)", raw_text, re.IGNORECASE)
+
+    patient_info = PatientInfo(
+        name=name_match.group(1).strip() if name_match else None,
+        age=float(age_match.group(1)) if age_match else None,
+        gender=gender_match.group(1).lower() if gender_match else None,
+        report_date=date_match.group(1) if date_match else None,
+        lab_name=lab_match.group(0).title() if lab_match else None,
+    )
+
+    biomarkers = []
+    extracted_canonical = set()
+    low_confidence_count = 0
+
+    lines = raw_text.splitlines()
+
+    for std_id, disp_name, pattern, unit, std_unit, (ref_low, ref_high) in HEURISTIC_PATTERNS:
+        match = re.search(pattern, raw_text, re.IGNORECASE)
+        if match:
+            try:
+                val = float(match.group(1))
+                # Unit normalization for WBC: if > 1000 cells/cumm, convert to 10^3/uL
+                if std_id == "wbc" and val > 100:
+                    val = round(val / 1000.0, 2)
+
+                # Determine flag
+                flag = BiomarkerFlag.NORMAL
+                if ref_low is not None and val < ref_low:
+                    flag = BiomarkerFlag.LOW
+                elif ref_high is not None and val > ref_high:
+                    flag = BiomarkerFlag.HIGH
+
+                # Source line
+                source_line = next((l.strip() for l in lines if match.group(0) in l), match.group(0))
+
+                item = BiomarkerItem(
+                    standard_id=CanonicalBiomarker(std_id),
+                    display_name=disp_name,
+                    raw_name=match.group(0).split(":")[0].strip() if ":" in match.group(0) else disp_name,
+                    value=val,
+                    unit=unit,
+                    standard_unit=std_unit,
+                    reference_range=ReferenceRange(low=ref_low, high=ref_high, text=f"{ref_low} - {ref_high} {unit}"),
+                    confidence=0.92,
+                    flag=flag,
+                    needs_review=False,
+                    source_text=source_line,
+                )
+                biomarkers.append(item)
+                extracted_canonical.add(std_id)
+            except Exception as e:
+                logger.debug(f"Failed parsing matched value for {std_id}: {e}")
+
+    missing_phenoage = sorted(list(PHENOAGE_CORE_BIOMARKERS - extracted_canonical))
+
+    meta = ExtractionMetadata(
+        model_used="heuristic-rule-engine (offline)",
+        extraction_duration_ms=duration_ms,
+        raw_text_length=len(raw_text),
+        total_biomarkers_found=len(biomarkers),
+        low_confidence_count=low_confidence_count,
+        missing_phenoage_biomarkers=missing_phenoage,
+    )
+
+    return ExtractionResponse(
+        patient_info=patient_info,
+        biomarkers=biomarkers,
+        extraction_metadata=meta,
+    )
+
+
+def call_openrouter_api(model: str, prompt: str, api_key: str, timeout: float = 30.0) -> str:
+    """Call OpenRouter completions endpoint with a given model and prompt."""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "HTTP-Referer": "https://github.com/SanchitKRai/Healthspan-Passport",
+        "X-Title": "Healthspan Passport",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.1,
+        "response_format": {"type": "json_object"},
+    }
+
+    with httpx.Client(timeout=timeout) as client:
+        resp = client.post(OPENROUTER_API_URL, headers=headers, json=payload)
+        resp.raise_for_status()
+        res_json = resp.json()
+        return res_json["choices"][0]["message"]["content"]
+
+
+def extract_biomarkers_with_llm(
+    raw_text: str,
+    api_key: Optional[str] = None,
+    primary_model: Optional[str] = None,
+    fallback_model: Optional[str] = None,
+) -> ExtractionResponse:
+    """
+    Main extraction pipeline:
+    1. Try Primary Model (Nemotron).
+    2. On failure or error, try Fallback Model (Kimi).
+    3. If JSON validation fails, execute 1 retry with feedback.
+    4. If no API key or all external calls fail, invoke heuristic fallback.
+    """
+    api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+    primary = primary_model or os.getenv("OPENROUTER_PRIMARY_MODEL", PRIMARY_MODEL)
+    fallback = fallback_model or os.getenv("OPENROUTER_FALLBACK_MODEL", FALLBACK_MODEL)
+
+    if not api_key:
+        logger.info("No OPENROUTER_API_KEY set. Using local heuristic extraction engine.")
+        return heuristic_extract(raw_text)
+
+    start_time = time.time()
+    prompt = build_extraction_prompt(raw_text)
+
+    # 1. Try Primary Model
+    for model_candidate in [primary, fallback]:
+        try:
+            logger.info(f"Extracting with model: {model_candidate}")
+            raw_response = call_openrouter_api(model_candidate, prompt, api_key)
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            # Try parsing
+            try:
+                return parse_and_validate_extraction(raw_response, raw_text, model_candidate, duration_ms)
+            except Exception as parse_err:
+                logger.warning(f"Validation failed on {model_candidate} output: {parse_err}. Initiating 1 retry.")
+                # One retry with error feedback
+                retry_prompt = build_retry_prompt(raw_text, str(parse_err))
+                retry_response = call_openrouter_api(model_candidate, retry_prompt, api_key)
+                duration_ms = int((time.time() - start_time) * 1000)
+                return parse_and_validate_extraction(retry_response, raw_text, f"{model_candidate} (retry)", duration_ms)
+
+        except Exception as model_err:
+            logger.error(f"Error calling {model_candidate}: {model_err}")
+            # Loop will continue to fallback model
+
+    # If both models fail, use heuristic engine with warning
+    logger.warning("All OpenRouter models failed. Falling back to heuristic extractor.")
+    duration_ms = int((time.time() - start_time) * 1000)
+    res = heuristic_extract(raw_text, duration_ms)
+    res.extraction_metadata.model_used = "heuristic-rule-engine (api-fallback)"
+    return res
