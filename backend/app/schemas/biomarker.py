@@ -185,3 +185,26 @@ class AnalysisResponse(BaseModel):
     risk_flags: List[RiskFlagItem]
     normalized_biomarkers: List[BiomarkerItem]
     population_caveat: str
+
+
+class ExplanationRequest(BaseModel):
+    chronological_age: float
+    patient_gender: Optional[str] = None
+    phenoage: Optional[float] = None
+    age_acceleration: Optional[float] = None
+    risk_flags: List[RiskFlagItem] = Field(default_factory=list)
+    biomarkers: List[BiomarkerItem] = Field(default_factory=list)
+
+
+class ExplanationResponse(BaseModel):
+    summary_en: str
+    summary_hi: str
+    key_findings_en: List[str]
+    key_findings_hi: List[str]
+    dietary_guidance_en: List[str]
+    dietary_guidance_hi: List[str]
+    questions_for_doctor_en: List[str]
+    questions_for_doctor_hi: List[str]
+    disclaimer_en: str
+    disclaimer_hi: str
+

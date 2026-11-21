@@ -13,11 +13,14 @@ from app.schemas.biomarker import (
     PhenoAgeResult,
     RiskFlagItem,
     BiomarkerItem,
+    ExplanationRequest,
+    ExplanationResponse,
 )
 from app.extraction.extractor import extract_text_from_file
 from app.llm.client import extract_biomarkers_with_llm
 from app.core.normalizer import normalize_biomarker
 from app.core.phenoage import calculate_phenoage, evaluate_risk_flags
+from app.core.explainer import generate_bilingual_explanation
 
 load_dotenv()
 
@@ -179,4 +182,14 @@ def analyze_biomarkers(req: AnalysisRequest) -> AnalysisResponse:
         normalized_biomarkers=normalized_list,
         population_caveat=POPULATION_CAVEAT_NOTE,
     )
+
+
+@app.post("/api/explain", response_model=ExplanationResponse)
+def explain_biomarkers(req: ExplanationRequest) -> ExplanationResponse:
+    """
+    Generates bilingual (English and Hindi) plain-language explanations,
+    Indian vegetarian-friendly dietary guidance, and doctor questions.
+    """
+    return generate_bilingual_explanation(req)
+
 
