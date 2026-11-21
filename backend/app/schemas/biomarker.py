@@ -152,3 +152,36 @@ class ExtractionResponse(BaseModel):
     patient_info: PatientInfo
     biomarkers: List[BiomarkerItem]
     extraction_metadata: ExtractionMetadata
+
+
+class PhenoAgeResult(BaseModel):
+    is_valid: bool
+    phenoage: Optional[float] = None
+    age_acceleration: Optional[float] = None
+    mortality_score_10yr: Optional[float] = None
+    missing_markers: List[str] = Field(default_factory=list)
+    message: str
+
+
+class RiskFlagItem(BaseModel):
+    category: str
+    title: str
+    status: str  # "optimal", "borderline", "elevated"
+    markers: List[str] = Field(default_factory=list)
+    message: str
+    recommendation: str
+
+
+class AnalysisRequest(BaseModel):
+    chronological_age: float = Field(..., gt=0, lt=130)
+    patient_gender: Optional[str] = None
+    biomarkers: List[BiomarkerItem]
+
+
+class AnalysisResponse(BaseModel):
+    chronological_age: float
+    patient_gender: Optional[str] = None
+    phenoage: PhenoAgeResult
+    risk_flags: List[RiskFlagItem]
+    normalized_biomarkers: List[BiomarkerItem]
+    population_caveat: str

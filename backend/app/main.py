@@ -6,9 +6,18 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from app.schemas.biomarker import ExtractionResponse
+from app.schemas.biomarker import (
+    ExtractionResponse,
+    AnalysisRequest,
+    AnalysisResponse,
+    PhenoAgeResult,
+    RiskFlagItem,
+    BiomarkerItem,
+)
 from app.extraction.extractor import extract_text_from_file
 from app.llm.client import extract_biomarkers_with_llm
+from app.core.normalizer import normalize_biomarker
+from app.core.phenoage import calculate_phenoage, evaluate_risk_flags
 
 load_dotenv()
 
@@ -98,3 +107,76 @@ def extract_sample_report(filename: str) -> ExtractionResponse:
     file_bytes = file_path.read_bytes()
     raw_text, _ = extract_text_from_file(file_bytes, filename)
     return extract_biomarkers_with_llm(raw_text)
+
+
+POPULATION_CAVEAT_NOTE = (
+    "Clinical & Population Limitation Note: The PhenoAge biological age algorithm was developed "
+    "and validated on the US population (NHANES III and IV cohorts). Reference ranges have been "
+    "adapted for Indian clinical standards, but biological age calculations for Indian users should "
+    "be interpreted as informational estimates and not definitive clinical or diagnostic measurements. "
+    "Always discuss comprehensive health assessments with a qualified medical professional."
+)
+
+
+@app.post("/api/analyze", response_model=AnalysisResponse)
+def analyze_biomarkers(req: AnalysisRequest) -> AnalysisResponse:
+    """
+    Accepts confirmed biomarker values and chronological age, performs unit normalization,
+    computes Levine (2018) PhenoAge, and assesses multi-organ preventive risk flags.
+    """
+    normalized_list = []
+    pheno_inputs: Dict[str, Optional[float]] = {}
+    risk_inputs: Dict[str, Optional[float]] = {}
+
+    for b in req.biomarkers:
+        if b.value is not None:
+            # Normalize to PhenoAge canonical units
+            norm_val, norm_unit, ref_range = normalize_biomarker(
+                b.standard_id.value,
+                b.value,
+                b.unit,
+                sex=req.patient_gender
+            )
+            # Create updated normalized BiomarkerItem
+            norm_item = BiomarkerItem(
+                standard_id=b.standard_id,
+                display_name=b.display_name,
+                raw_name=b.raw_name,
+                value=norm_val,
+                unit=norm_unit,
+                standard_unit=norm_unit,
+                reference_range=ref_range,
+                confidence=b.confidence,
+                flag=b.flag,
+                needs_review=b.needs_review,
+                source_text=b.source_text,
+                bounding_box=b.bounding_box,
+            )
+            normalized_list.append(norm_item)
+
+            # Store for PhenoAge (using normalized canonical units)
+            pheno_inputs[b.standard_id.value] = norm_val
+
+            # Store for risk flags (preserve original mg/dL or conventional values when applicable)
+            risk_inputs[b.standard_id.value] = b.value
+            # Also store glucose under glucose_fasting
+            if b.standard_id.value == "glucose_fasting":
+                risk_inputs["glucose"] = b.value
+
+    # Compute PhenoAge
+    pheno_res_dict = calculate_phenoage(pheno_inputs, req.chronological_age)
+    pheno_result = PhenoAgeResult(**pheno_res_dict)
+
+    # Evaluate multi-organ risk flags
+    flags_list = evaluate_risk_flags(risk_inputs, sex=req.patient_gender)
+    risk_flags = [RiskFlagItem(**f) for f in flags_list]
+
+    return AnalysisResponse(
+        chronological_age=req.chronological_age,
+        patient_gender=req.patient_gender,
+        phenoage=pheno_result,
+        risk_flags=risk_flags,
+        normalized_biomarkers=normalized_list,
+        population_caveat=POPULATION_CAVEAT_NOTE,
+    )
+
