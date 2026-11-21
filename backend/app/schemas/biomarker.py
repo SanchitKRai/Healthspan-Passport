@@ -208,3 +208,15 @@ class ExplanationResponse(BaseModel):
     disclaimer_en: str
     disclaimer_hi: str
 
+
+class ClinicalExportRequest(BaseModel):
+    patient_info: Optional[PatientInfo] = None
+    chronological_age: float
+    patient_gender: Optional[str] = None
+    phenoage: Optional[PhenoAgeResult] = None
+    biomarkers: List[BiomarkerItem] = Field(default_factory=list)
+    risk_flags: List[RiskFlagItem] = Field(default_factory=list)
+    questions_for_doctor: List[str] = Field(default_factory=list)
+    population_caveat: Optional[str] = None
+
+

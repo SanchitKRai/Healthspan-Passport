@@ -2,7 +2,7 @@ import os
 import logging
 from pathlib import Path
 from typing import List, Dict, Any
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -15,12 +15,14 @@ from app.schemas.biomarker import (
     BiomarkerItem,
     ExplanationRequest,
     ExplanationResponse,
+    ClinicalExportRequest,
 )
 from app.extraction.extractor import extract_text_from_file
 from app.llm.client import extract_biomarkers_with_llm
 from app.core.normalizer import normalize_biomarker
 from app.core.phenoage import calculate_phenoage, evaluate_risk_flags
 from app.core.explainer import generate_bilingual_explanation
+from app.core.exporter import generate_clinician_pdf, generate_fhir_bundle
 
 load_dotenv()
 
@@ -191,5 +193,29 @@ def explain_biomarkers(req: ExplanationRequest) -> ExplanationResponse:
     Indian vegetarian-friendly dietary guidance, and doctor questions.
     """
     return generate_bilingual_explanation(req)
+
+
+@app.post("/api/export/pdf")
+def export_clinician_pdf(req: ClinicalExportRequest):
+    """
+    Generates a single-page clinician handoff PDF using ReportLab.
+    """
+    pdf_bytes = generate_clinician_pdf(req)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": "attachment; filename=Healthspan_Passport_Clinical_Summary.pdf"
+        }
+    )
+
+
+@app.post("/api/export/fhir")
+def export_fhir_bundle(req: ClinicalExportRequest) -> Dict[str, Any]:
+    """
+    Generates an HL7 FHIR R4 Bundle with LOINC observation codes.
+    """
+    return generate_fhir_bundle(req)
+
 
 
