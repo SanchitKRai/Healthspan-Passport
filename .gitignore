@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+.pytest_cache/
+*.log
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+dist/
+.env*
+!.env.example
+
+# Superpowers scratch
+.superpowers/
+
+# OS
+.DS_Store
+Thumbs.db
