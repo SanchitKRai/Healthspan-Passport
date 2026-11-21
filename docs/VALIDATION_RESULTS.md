@@ -50,3 +50,36 @@
 
 3. **Missing Biomarker Integrity:**
    When essential tests (such as hs-CRP) are missing from routine reports, the pipeline flags the absence explicitly rather than interpolating or guessing.
+
+
+---
+
+## 4. NHANES Cohort Biological Age & Mortality Validation
+
+> **Scientific Benchmark:** Direct replication of the Levine et al. (2018) PhenoAge model on the NHANES validation cohort with 10-year linked National Death Index (NDI) mortality follow-up.
+
+### 4.1 Cohort Characteristics & Study Design
+- **Cohort Source:** CDC National Health and Nutrition Examination Survey (NHANES IV: 1999–2010 cycles) linked to NCHS 10-year mortality data.
+- **Sample Size ($N$):** **10,724 adults** (ages 20.0 to 84.0 years, mean chronological age 48.5 years).
+- **Inclusion Criteria:** Complete laboratory panels for the 9 core PhenoAge biomarkers (Albumin, Creatinine, Fasting Glucose, hs-CRP, Lymphocyte %, MCV, RDW, ALP, WBC) and recorded survival status.
+- **Primary Endpoint:** 10-year all-cause mortality rate = **7.02%**.
+
+### 4.2 Statistical Correlation & Calibration
+- **Pearson Correlation ($r$):** **$r = 0.943$** ($p < 0.0001$), confirming strong physiological alignment with chronological aging while capturing individual biological age divergence.
+- **Mean PhenoAge:** 41.1 years vs. Mean Chronological Age 48.5 years.
+
+### 4.3 10-Year All-Cause Mortality Stratification by PhenoAge Acceleration
+
+PhenoAge Acceleration ($\Delta = \text{PhenoAge} - \text{Age}$) segments participants into four distinct biological aging trajectories:
+
+| Quartile | Acceleration Range ($\Delta$) | Mean $\Delta$ | $N$ | 10-Yr Deaths | Mortality Rate (%) | Relative Risk vs Q1 |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Q1 (Decelerated)** | -28.9 to -12.2 yrs | -16.2 yrs | 2,686 | 36 | **1.34%** | 1.00x (Ref) |
+| **Q2 (Normal-Low)** | -12.1 to -7.4 yrs | -9.6 yrs | 2,739 | 87 | **3.18%** | 2.37x |
+| **Q3 (Normal-High)** | -7.3 to -2.7 yrs | -5.1 yrs | 2,626 | 167 | **6.36%** | 4.74x |
+| **Q4 (Accelerated)** | -2.6 to +19.2 yrs | +1.5 yrs | 2,673 | 463 | **17.32%** | **12.92x** |
+
+### 4.4 Cox Proportional Hazards Regression
+- **Adjusted Hazard Ratio per +1 Year of Acceleration:** **HR = 1.093** (95% CI: 1.081–1.106, $p < 0.0001$).
+- **Interpretation:** Each additional year of positive PhenoAge acceleration (biological age exceeding chronological age) is independently associated with an **~9% increased risk of 10-year all-cause mortality**, independent of chronological age.
+- **Validation Plot:** Generated and saved to [`docs/nhanes_validation.png`](./nhanes_validation.png).
