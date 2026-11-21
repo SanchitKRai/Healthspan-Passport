@@ -121,7 +121,9 @@ def extract_text_from_image(image_bytes: bytes) -> Tuple[str, Dict[str, Any]]:
 def extract_text_from_file(file_bytes: bytes, filename: str) -> Tuple[str, Dict[str, Any]]:
     """Universal text extraction dispatch based on file extension / signature."""
     lower_name = filename.lower()
-    if lower_name.endswith(".pdf"):
+    if lower_name.endswith(".txt"):
+        return file_bytes.decode("utf-8", errors="ignore"), {"format": "text", "page_count": 1, "ocr_used": False, "error": None}
+    elif lower_name.endswith(".pdf"):
         return extract_text_from_pdf(file_bytes)
     elif lower_name.endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif")):
         return extract_text_from_image(file_bytes)
