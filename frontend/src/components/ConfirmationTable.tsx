@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { API_BASE_URL } from "../config/api";
 import { BiomarkerItem, PatientInfo, AnalysisResponse } from "../types/biomarker";
 
 interface ConfirmationTableProps {
@@ -51,10 +52,8 @@ export const ConfirmationTable: React.FC<ConfirmationTableProps> = ({
     setLoading(true);
     setError(null);
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
     try {
-      const response = await fetch(`${apiUrl}/api/analyze`, {
+      const response = await fetch(`${API_BASE_URL}/api/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

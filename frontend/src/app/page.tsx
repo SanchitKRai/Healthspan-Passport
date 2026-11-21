@@ -10,6 +10,8 @@ import { RiskFlagsSection } from "../components/RiskFlagsSection";
 import WhatIfSimulator from "../components/WhatIfSimulator";
 import TrendsView from "../components/TrendsView";
 import BilingualExplainer, { ExplanationData } from "../components/BilingualExplainer";
+import ClinicianHandoff from "../components/ClinicianHandoff";
+import { API_BASE_URL } from "../config/api";
 
 export default function Home() {
   const [extractedData, setExtractedData] = useState<ExtractionResponse | null>(null);
@@ -26,7 +28,7 @@ export default function Home() {
   const fetchExplanation = async (analysis: AnalysisResponse) => {
     setIsExplaining(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/explain", {
+      const res = await fetch(`${API_BASE_URL}/api/explain`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -139,6 +141,13 @@ export default function Home() {
 
               {/* Multi-Organ Risk Flags */}
               <RiskFlagsSection riskFlags={analysisData.risk_flags} />
+
+              {/* Task 1/2: Clinician One-Page PDF & FHIR R4 Action Bar */}
+              <ClinicianHandoff
+                analysis={analysisData}
+                patientInfo={extractedData.patient_info}
+                explanation={explanation}
+              />
 
               {/* Module 4: Plain-Language Bilingual Explainer & Voice Narration */}
               <BilingualExplainer
