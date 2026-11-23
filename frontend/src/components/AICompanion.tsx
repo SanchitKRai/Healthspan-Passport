@@ -81,7 +81,7 @@ export const AICompanion: React.FC<AICompanionProps> = ({ analysis = null, bioma
     <div className="fixed bottom-5 right-5 z-[100] flex flex-col items-end gap-3">
       {isOpen && (
         <section
-          className="flex h-[min( min(620px, calc(100vh-120px)), 620px)] max-h-[calc(100vh-110px)] w-[min(380px,calc(100vw-28px))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+          className="flex h-[min(620px,calc(100vh-120px))] max-h-[calc(100vh-110px)] w-[min(380px,calc(100vw-28px))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
           aria-label="Healthspan Passport AI Companion"
         >
           <div className="flex items-center justify-between bg-slate-900 px-4 py-3 text-white">
