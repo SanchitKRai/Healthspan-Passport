@@ -11,6 +11,7 @@ import WhatIfSimulator from "../components/WhatIfSimulator";
 import TrendsView from "../components/TrendsView";
 import BilingualExplainer, { ExplanationData } from "../components/BilingualExplainer";
 import ClinicianHandoff from "../components/ClinicianHandoff";
+import AICompanion from "../components/AICompanion";
 import { API_BASE_URL } from "../config/api";
 
 export default function Home() {
@@ -160,6 +161,12 @@ export default function Home() {
               <WhatIfSimulator
                 chronologicalAge={analysisData.chronological_age}
                 initialValues={getSimulatorInitialValues(analysisData)}
+              />
+
+              {/* Report-aware AI Companion uses only the confirmed analysis payload */}
+              <AICompanion
+                analysis={analysisData}
+                biomarkers={analysisData.normalized_biomarkers}
               />
 
               {/* Module 3B: Longitudinal Healthspan & Biomarker Trends */}
