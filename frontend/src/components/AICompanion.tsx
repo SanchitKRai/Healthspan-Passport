@@ -10,17 +10,17 @@ type ChatTurn = {
 };
 
 interface AICompanionProps {
-  analysis: AnalysisResponse;
-  biomarkers: BiomarkerItem[];
+  analysis?: AnalysisResponse | null;
+  biomarkers?: BiomarkerItem[];
 }
 
-export const AICompanion: React.FC<AICompanionProps> = ({ analysis, biomarkers }) => {
+const welcomeMessage =
+  "Hi! I’m your Healthspan Passport assistant. Ask me about biomarkers, lab reports, or general health science. Upload and confirm a report to let me explain your own results. I provide education, not diagnosis or treatment.";
+
+export const AICompanion: React.FC<AICompanionProps> = ({ analysis = null, biomarkers = [] }) => {
+  const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatTurn[]>([
-    {
-      role: "assistant",
-      content:
-        "Hi! I’m your Healthspan Passport AI Companion. Ask me to explain a confirmed biomarker, its lab reference interval, or a term in your report. I provide educational information, not a diagnosis or treatment plan.",
-    },
+    { role: "assistant", content: welcomeMessage },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,10 +33,7 @@ export const AICompanion: React.FC<AICompanionProps> = ({ analysis, biomarkers }
 
     setError(null);
     setLoading(true);
-
-    const history = messages
-      .filter((turn) => turn.role === "user" || turn.role === "assistant")
-      .slice(-12);
+    const history = messages.slice(-12);
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/chat`, {
@@ -51,12 +48,11 @@ export const AICompanion: React.FC<AICompanionProps> = ({ analysis, biomarkers }
             unit: biomarker.standard_unit || biomarker.unit,
             reference_range: biomarker.reference_range?.text ?? null,
             flag: biomarker.flag,
-            // The user has reviewed and submitted this analysis through Confirm & Calculate.
             confirmed: true,
           })),
-          chronological_age: analysis.chronological_age,
-          phenoage: analysis.phenoage.phenoage,
-          age_acceleration: analysis.phenoage.age_acceleration,
+          chronological_age: analysis?.chronological_age ?? null,
+          phenoage: analysis?.phenoage?.phenoage ?? null,
+          age_acceleration: analysis?.phenoage?.age_acceleration ?? null,
         }),
       });
 
@@ -82,76 +78,96 @@ export const AICompanion: React.FC<AICompanionProps> = ({ analysis, biomarkers }
   };
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-      <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-        <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-700" aria-hidden="true">
-            ✦
-          </span>
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">AI Health Companion</h2>
-            <p className="text-xs text-slate-500">Ask questions about your confirmed report data</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-h-96 space-y-3 overflow-y-auto p-4" aria-live="polite">
-        {messages.map((turn, index) => (
-          <div
-            key={index}
-            className={`flex ${turn.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            <div
-              className={`max-w-[90%] whitespace-pre-wrap rounded-xl px-4 py-3 text-sm leading-relaxed ${
-                turn.role === "user"
-                  ? "bg-blue-600 text-white"
-                  : "border border-slate-200 bg-slate-50 text-slate-800"
-              }`}
-            >
-              {turn.content}
+    <div className="fixed bottom-5 right-5 z-[100] flex flex-col items-end gap-3">
+      {isOpen && (
+        <section
+          className="flex h-[min( min(620px, calc(100vh-120px)), 620px)] max-h-[calc(100vh-110px)] w-[min(380px,calc(100vw-28px))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+          aria-label="Healthspan Passport AI Companion"
+        >
+          <div className="flex items-center justify-between bg-slate-900 px-4 py-3 text-white">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500 text-xl" aria-hidden="true">🤖</span>
+              <div>
+                <h2 className="text-sm font-bold">Healthspan AI</h2>
+                <p className="text-[11px] text-slate-300">
+                  {analysis ? "Your confirmed report is connected" : "Ask me anything about health science"}
+                </p>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="rounded-lg px-2 py-1 text-xl text-slate-300 hover:bg-slate-700 hover:text-white"
+              aria-label="Close AI Companion"
+            >
+              ×
+            </button>
           </div>
-        ))}
-        {loading && (
-          <div className="text-xs text-slate-500" role="status">
-            AI Companion is preparing an explanation…
-          </div>
-        )}
-      </div>
 
-      <form onSubmit={handleSubmit} className="border-t border-slate-200 p-4">
-        {error && (
-          <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
-            {error}
-          </p>
-        )}
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <label htmlFor="health-companion-message" className="sr-only">
-            Ask the AI Health Companion a question
-          </label>
-          <input
-            id="health-companion-message"
-            type="text"
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            maxLength={2000}
-            placeholder="e.g. What does my hemoglobin result mean?"
-            className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            disabled={loading}
-          />
-          <button
-            type="submit"
-            disabled={loading || !input.trim()}
-            className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? "Thinking…" : "Send"}
-          </button>
-        </div>
-        <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-          Educational use only. This assistant does not diagnose conditions or recommend treatment. For urgent or severe symptoms, seek medical care.
-        </p>
-      </form>
-    </section>
+          <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-3" aria-live="polite">
+            {messages.map((turn, index) => (
+              <div key={index} className={`flex ${turn.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div
+                  className={`max-w-[90%] whitespace-pre-wrap rounded-2xl px-3 py-2.5 text-sm leading-relaxed ${
+                    turn.role === "user"
+                      ? "rounded-br-sm bg-blue-600 text-white"
+                      : "rounded-bl-sm border border-slate-200 bg-white text-slate-800 shadow-sm"
+                  }`}
+                >
+                  {turn.content}
+                </div>
+              </div>
+            ))}
+            {loading && <p className="text-xs text-slate-500" role="status">Thinking…</p>}
+          </div>
+
+          <form onSubmit={handleSubmit} className="border-t border-slate-200 bg-white p-3">
+            {error && (
+              <p className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
+                {error}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <label htmlFor="health-companion-message" className="sr-only">Your question</label>
+              <input
+                id="health-companion-message"
+                type="text"
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                maxLength={2000}
+                placeholder="Ask a question…"
+                className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                disabled={loading}
+              />
+              <button
+                type="submit"
+                disabled={loading || !input.trim()}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Send
+              </button>
+            </div>
+            <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
+              Educational only — not a diagnosis or treatment recommendation. Seek medical care for urgent symptoms.
+            </p>
+          </form>
+        </section>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setIsOpen((open) => !open)}
+        className="group flex items-center gap-2 rounded-full bg-blue-600 py-2 pl-2 pr-4 text-white shadow-lg ring-4 ring-blue-100 transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-blue-200"
+        aria-label={isOpen ? "Close AI Companion" : "Open AI Companion"}
+        aria-expanded={isOpen}
+      >
+        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-2xl" aria-hidden="true">🤖</span>
+        <span className="text-left">
+          <span className="block text-sm font-bold leading-tight">Ask AI</span>
+          <span className="block text-[10px] text-blue-100">Health Companion</span>
+        </span>
+      </button>
+    </div>
   );
 };
 
