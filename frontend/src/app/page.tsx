@@ -91,6 +91,7 @@ export default function Home() {
 
   return (
     <div className="space-y-8">
+      <AICompanion analysis={analysisData} biomarkers={analysisData?.normalized_biomarkers ?? []} />
       {!extractedData && (
         <>
           <UploadSection
@@ -161,12 +162,6 @@ export default function Home() {
               <WhatIfSimulator
                 chronologicalAge={analysisData.chronological_age}
                 initialValues={getSimulatorInitialValues(analysisData)}
-              />
-
-              {/* Report-aware AI Companion uses only the confirmed analysis payload */}
-              <AICompanion
-                analysis={analysisData}
-                biomarkers={analysisData.normalized_biomarkers}
               />
 
               {/* Module 3B: Longitudinal Healthspan & Biomarker Trends */}
