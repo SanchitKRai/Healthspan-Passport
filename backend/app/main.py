@@ -19,6 +19,7 @@ from app.schemas.biomarker import (
 )
 from app.extraction.extractor import extract_text_from_file
 from app.llm.client import extract_biomarkers_with_llm
+from app.llm.chat import ChatRequest, ChatResponse, answer_health_question
 from app.core.normalizer import normalize_biomarker
 from app.core.phenoage import calculate_phenoage, evaluate_risk_flags
 from app.core.explainer import generate_bilingual_explanation
@@ -86,7 +87,6 @@ def list_sample_reports() -> List[Dict[str, Any]]:
         for f in sorted(SAMPLE_REPORTS_DIR.iterdir()):
             if f.is_file() and f.suffix.lower() in [".pdf", ".png", ".jpg", ".jpeg"]:
                 format_type = "pdf" if f.suffix.lower() == ".pdf" else "image"
-                # Generate clean human label
                 clean_name = f.stem.replace("_", " ").title()
                 samples.append({
                     "id": f.stem,
@@ -102,7 +102,6 @@ def list_sample_reports() -> List[Dict[str, Any]]:
 def extract_sample_report(filename: str) -> ExtractionResponse:
     """Extract biomarkers directly from one of the pre-loaded sample reports."""
     file_path = SAMPLE_REPORTS_DIR / filename
-    # Prevent directory traversal
     if not file_path.resolve().is_relative_to(SAMPLE_REPORTS_DIR.resolve()):
         raise HTTPException(status_code=400, detail="Invalid file path")
 
@@ -130,19 +129,17 @@ def analyze_biomarkers(req: AnalysisRequest) -> AnalysisResponse:
     computes Levine (2018) PhenoAge, and assesses multi-organ preventive risk flags.
     """
     normalized_list = []
-    pheno_inputs: Dict[str, Optional[float]] = {}
-    risk_inputs: Dict[str, Optional[float]] = {}
+    pheno_inputs: Dict[str, Any] = {}
+    risk_inputs: Dict[str, Any] = {}
 
     for b in req.biomarkers:
         if b.value is not None:
-            # Normalize to PhenoAge canonical units
             norm_val, norm_unit, ref_range = normalize_biomarker(
                 b.standard_id.value,
                 b.value,
                 b.unit,
                 sex=req.patient_gender
             )
-            # Create updated normalized BiomarkerItem
             norm_item = BiomarkerItem(
                 standard_id=b.standard_id,
                 display_name=b.display_name,
@@ -158,21 +155,13 @@ def analyze_biomarkers(req: AnalysisRequest) -> AnalysisResponse:
                 bounding_box=b.bounding_box,
             )
             normalized_list.append(norm_item)
-
-            # Store for PhenoAge (using normalized canonical units)
             pheno_inputs[b.standard_id.value] = norm_val
-
-            # Store for risk flags (preserve original mg/dL or conventional values when applicable)
             risk_inputs[b.standard_id.value] = b.value
-            # Also store glucose under glucose_fasting
             if b.standard_id.value == "glucose_fasting":
                 risk_inputs["glucose"] = b.value
 
-    # Compute PhenoAge
     pheno_res_dict = calculate_phenoage(pheno_inputs, req.chronological_age)
     pheno_result = PhenoAgeResult(**pheno_res_dict)
-
-    # Evaluate multi-organ risk flags
     flags_list = evaluate_risk_flags(risk_inputs, sex=req.patient_gender)
     risk_flags = [RiskFlagItem(**f) for f in flags_list]
 
@@ -188,34 +177,31 @@ def analyze_biomarkers(req: AnalysisRequest) -> AnalysisResponse:
 
 @app.post("/api/explain", response_model=ExplanationResponse)
 def explain_biomarkers(req: ExplanationRequest) -> ExplanationResponse:
-    """
-    Generates bilingual (English and Hindi) plain-language explanations,
-    Indian vegetarian-friendly dietary guidance, and doctor questions.
-    """
+    """Generate bilingual plain-language explanations and doctor questions."""
     return generate_bilingual_explanation(req)
+
+
+@app.post("/api/chat", response_model=ChatResponse)
+def chat_with_healthspan_companion(req: ChatRequest) -> ChatResponse:
+    """Answer an educational question using only the confirmed report context supplied."""
+    try:
+        return answer_health_question(req)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.post("/api/export/pdf")
 def export_clinician_pdf(req: ClinicalExportRequest):
-    """
-    Generates a single-page clinician handoff PDF using ReportLab.
-    """
+    """Generate a single-page clinician handoff PDF."""
     pdf_bytes = generate_clinician_pdf(req)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": "attachment; filename=Healthspan_Passport_Clinical_Summary.pdf"
-        }
+        headers={"Content-Disposition": "attachment; filename=Healthspan_Passport_Clinical_Summary.pdf"}
     )
 
 
 @app.post("/api/export/fhir")
 def export_fhir_bundle(req: ClinicalExportRequest) -> Dict[str, Any]:
-    """
-    Generates an HL7 FHIR R4 Bundle with LOINC observation codes.
-    """
+    """Generate an HL7 FHIR R4 Bundle with LOINC observation codes."""
     return generate_fhir_bundle(req)
-
-
-
