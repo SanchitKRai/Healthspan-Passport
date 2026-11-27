@@ -23,6 +23,9 @@ dist/
 # Superpowers scratch
 .superpowers/
 
+# Raw downloaded NHANES / NCHS public data files (large binaries; fetched via download.py)
+data/nhanes_raw/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,0 +1,208 @@
+{
+  "generated_at_utc": "2026-11-27T13:44:13Z",
+  "dataset": "CDC NHANES 1999-2010 (6 cycles) + NCHS 2019 Public-Use Linked Mortality Files",
+  "weighted": false,
+  "glucose_definition": "Standard biochemistry profile serum glucose (LBXSGL, full MEC sample, includes non-fasted)",
+  "n_flow": [
+    {
+      "step": "1. Total participants in NHANES 1999-2010 Demographics (DEMO*)",
+      "remaining_n": 62160,
+      "excluded_n": 0
+    },
+    {
+      "step": "2. Adults aged 20-84 excluding top-coded ages (>=85 in 1999-2006; >=80 in 2007-2010)",
+      "remaining_n": 30798,
+      "excluded_n": 31362
+    },
+    {
+      "step": "3. Mortality-eligible (ELIGSTAT == 1) with non-missing MORTSTAT and PERMTH_EXM >= 0",
+      "remaining_n": 29311,
+      "excluded_n": 1487
+    },
+    {
+      "step": "4. Complete cases across all 9 PhenoAge biomarkers (final analytic sample)",
+      "remaining_n": 27256,
+      "excluded_n": 2055
+    }
+  ],
+  "analytic_n": 27256,
+  "total_deaths_all_followup": 5212,
+  "deaths_within_10yr": 3178,
+  "median_followup_months": 159.0,
+  "max_followup_months": 249.0,
+  "mean_chronological_age": 48.13,
+  "mean_phenoage": 42.98,
+  "mean_age_acceleration": -5.15,
+  "pearson_r_phenoage_vs_age": 0.9041,
+  "pearson_p_value": 0.0,
+  "cox_ph_adjusted_for_age": {
+    "hr_per_1yr_age_acceleration": 1.0285,
+    "hr_95_ci": [
+      1.0272,
+      1.0298
+    ],
+    "p_value": 0.0,
+    "hr_per_1yr_chronological_age": 1.0913,
+    "age_hr_95_ci": [
+      1.0889,
+      1.0938
+    ],
+    "joint_model_c_index": 0.8475
+  },
+  "c_index_comparison": {
+    "phenoage_alone": 0.8534,
+    "chronological_age_alone": 0.8313,
+    "delta_c_index": 0.0222
+  },
+  "quartiles_by_age_acceleration": [
+    {
+      "quartile": "Q1 (Lowest)",
+      "n": 6981,
+      "accel_min": -24.8,
+      "accel_max": -10.2,
+      "mean_accel": -12.85,
+      "mean_age": 46.5,
+      "mean_phenoage": 33.7,
+      "deaths_10yr": 387,
+      "crude_10yr_mortality_pct": 5.54,
+      "km_10yr_mortality_pct": 5.6,
+      "km_rr_vs_q1": 1.0,
+      "deaths_total_followup": 828,
+      "total_followup_mortality_pct": 11.86
+    },
+    {
+      "quartile": "Q2",
+      "n": 6754,
+      "accel_min": -10.1,
+      "accel_max": -6.7,
+      "mean_accel": -8.41,
+      "mean_age": 46.6,
+      "mean_phenoage": 38.2,
+      "deaths_10yr": 465,
+      "crude_10yr_mortality_pct": 6.88,
+      "km_10yr_mortality_pct": 6.93,
+      "km_rr_vs_q1": 1.24,
+      "deaths_total_followup": 931,
+      "total_followup_mortality_pct": 13.78
+    },
+    {
+      "quartile": "Q3",
+      "n": 6748,
+      "accel_min": -6.6,
+      "accel_max": -2.3,
+      "mean_accel": -4.65,
+      "mean_age": 47.7,
+      "mean_phenoage": 43.1,
+      "deaths_10yr": 712,
+      "crude_10yr_mortality_pct": 10.55,
+      "km_10yr_mortality_pct": 10.62,
+      "km_rr_vs_q1": 1.89,
+      "deaths_total_followup": 1220,
+      "total_followup_mortality_pct": 18.08
+    },
+    {
+      "quartile": "Q4 (Highest)",
+      "n": 6773,
+      "accel_min": -2.2,
+      "accel_max": 171.5,
+      "mean_accel": 5.53,
+      "mean_age": 51.7,
+      "mean_phenoage": 57.2,
+      "deaths_10yr": 1614,
+      "crude_10yr_mortality_pct": 23.83,
+      "km_10yr_mortality_pct": 23.93,
+      "km_rr_vs_q1": 4.27,
+      "deaths_total_followup": 2233,
+      "total_followup_mortality_pct": 32.97
+    }
+  ],
+  "by_cycle": [
+    {
+      "cycle": "1999_2000",
+      "n": 3982,
+      "deaths_all": 1195,
+      "deaths_10yr": 536,
+      "median_followup_months": 234.0,
+      "mean_age": 48.9,
+      "mean_phenoage": 41.9
+    },
+    {
+      "cycle": "2001_2002",
+      "n": 4523,
+      "deaths_all": 1118,
+      "deaths_10yr": 572,
+      "median_followup_months": 212.0,
+      "mean_age": 47.9,
+      "mean_phenoage": 42.5
+    },
+    {
+      "cycle": "2003_2004",
+      "n": 4246,
+      "deaths_all": 1009,
+      "deaths_10yr": 581,
+      "median_followup_months": 189.0,
+      "mean_age": 49.1,
+      "mean_phenoage": 44.3
+    },
+    {
+      "cycle": "2005_2006",
+      "n": 4294,
+      "deaths_all": 746,
+      "deaths_10yr": 494,
+      "median_followup_months": 166.0,
+      "mean_age": 47.3,
+      "mean_phenoage": 43.6
+    },
+    {
+      "cycle": "2007_2008",
+      "n": 4934,
+      "deaths_all": 665,
+      "deaths_10yr": 527,
+      "median_followup_months": 141.0,
+      "mean_age": 48.5,
+      "mean_phenoage": 43.2
+    },
+    {
+      "cycle": "2009_2010",
+      "n": 5277,
+      "deaths_all": 479,
+      "deaths_10yr": 468,
+      "median_followup_months": 119.0,
+      "mean_age": 47.3,
+      "mean_phenoage": 42.4
+    }
+  ],
+  "source_urls": [
+    "https://ftp.cdc.gov/pub/Health_statistics/NCHS/datalinkage/linked_mortality/R_ReadInProgramAllSurveys.R",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/1999/DataFiles/DEMO.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/1999/DataFiles/LAB25.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/1999/DataFiles/LAB18.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/1999/DataFiles/LAB11.xpt",
+    "https://ftp.cdc.gov/pub/Health_Statistics/NCHS/datalinkage/linked_mortality/NHANES_1999_2000_MORT_2019_PUBLIC.dat",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2001/DataFiles/DEMO_B.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2001/DataFiles/L25_B.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2001/DataFiles/L40_B.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2001/DataFiles/L11_B.xpt",
+    "https://ftp.cdc.gov/pub/Health_Statistics/NCHS/datalinkage/linked_mortality/NHANES_2001_2002_MORT_2019_PUBLIC.dat",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2003/DataFiles/DEMO_C.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2003/DataFiles/L25_C.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2003/DataFiles/L40_C.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2003/DataFiles/L11_C.xpt",
+    "https://ftp.cdc.gov/pub/Health_Statistics/NCHS/datalinkage/linked_mortality/NHANES_2003_2004_MORT_2019_PUBLIC.dat",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2005/DataFiles/DEMO_D.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2005/DataFiles/CBC_D.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2005/DataFiles/BIOPRO_D.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2005/DataFiles/CRP_D.xpt",
+    "https://ftp.cdc.gov/pub/Health_Statistics/NCHS/datalinkage/linked_mortality/NHANES_2005_2006_MORT_2019_PUBLIC.dat",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2007/DataFiles/DEMO_E.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2007/DataFiles/CBC_E.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2007/DataFiles/BIOPRO_E.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2007/DataFiles/CRP_E.xpt",
+    "https://ftp.cdc.gov/pub/Health_Statistics/NCHS/datalinkage/linked_mortality/NHANES_2007_2008_MORT_2019_PUBLIC.dat",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2009/DataFiles/DEMO_F.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2009/DataFiles/CBC_F.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2009/DataFiles/BIOPRO_F.xpt",
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2009/DataFiles/CRP_F.xpt",
+    "https://ftp.cdc.gov/pub/Health_Statistics/NCHS/datalinkage/linked_mortality/NHANES_2009_2010_MORT_2019_PUBLIC.dat"
+  ]
+}
