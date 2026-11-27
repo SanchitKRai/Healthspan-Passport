@@ -1,5 +1,7 @@
 # Day 3 & Day 4: Validation Proof & Interactive Differentiators Implementation Plan
 
+> **INTEGRITY AUDIT NOTICE (2026-11-27):** This historical implementation plan is superseded on branch `day1-integrity`. Task 2 (`validate_nhanes.py`) originally generated a synthetic cohort (`data/nhanes_cohort.csv`, now `data/synthetic_cohort_unit_test.csv`) with mortality simulated from the Levine coefficients themselves, making its metrics circular. `docs/nhanes_validation.png` and circular NHANES claims have been removed; real-NHANES replication is tracked separately (Task 3).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement extraction benchmark against ground truth, reproducible NHANES PhenoAge validation pipeline with mortality correlation, What-If biological age slider simulator, multi-report longitudinal trend tracker with local storage & privacy controls, and bilingual (English/Hindi) plain-language explainer with Web Speech voice synthesis.
