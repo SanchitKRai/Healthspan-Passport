@@ -1,12 +1,11 @@
 import pytest
-import numpy as np
 import pandas as pd
 
 
-def test_nhanes_cohort_scoring_logic():
-    from scripts.validate_nhanes import score_nhanes_cohort, calculate_quartile_mortality
+def test_synthetic_cohort_scoring_logic():
+    from scripts.validate_nhanes import score_synthetic_cohort, calculate_quartile_mortality
 
-    # Create synthetic cohort with known properties
+    # Create synthetic cohort with known properties to test PhenoAge scoring code path
     df = pd.DataFrame({
         "age": [30.0, 45.0, 60.0, 75.0],
         "albumin": [46.0, 43.0, 40.0, 37.0],
@@ -18,11 +17,11 @@ def test_nhanes_cohort_scoring_logic():
         "rdw": [12.0, 12.8, 13.5, 14.8],
         "alp": [65.0, 75.0, 85.0, 105.0],
         "wbc": [5.5, 6.5, 7.5, 8.8],
-        "mortstat": [0, 0, 1, 1], # 10-year mortality status
+        "mortstat": [0, 0, 1, 1],
         "followup_months": [120.0, 120.0, 72.0, 36.0],
     })
 
-    scored_df = score_nhanes_cohort(df)
+    scored_df = score_synthetic_cohort(df)
     assert "phenoage" in scored_df.columns
     assert "age_acceleration" in scored_df.columns
     assert not scored_df["phenoage"].isnull().any()
@@ -37,17 +36,17 @@ def test_nhanes_cohort_scoring_logic():
     assert "quartile" in quartiles[0]
 
 
-def test_nhanes_statistical_metrics():
-    from scripts.validate_nhanes import compute_cohort_statistics, generate_calibrated_cohort
+def test_synthetic_cohort_statistical_metrics():
+    from scripts.validate_nhanes import compute_cohort_statistics, generate_synthetic_test_cohort
 
-    # Generate a small sample cohort
-    df = generate_calibrated_cohort(n_samples=500, random_seed=42)
+    # Synthetic cohort strictly for unit-testing statistical pipeline mechanics (circular; not validation)
+    df = generate_synthetic_test_cohort(n_samples=500, random_seed=42)
     assert len(df) == 500
     assert "age" in df.columns
     assert "mortstat" in df.columns
 
     stats = compute_cohort_statistics(df)
     assert "pearson_r" in stats
-    assert stats["pearson_r"] > 0.85  # Strong correlation with chronological age
+    assert stats["pearson_r"] > 0.85
     assert "cox_hazard_ratio_per_year" in stats
-    assert stats["cox_hazard_ratio_per_year"] > 1.0  # Accelerated aging increases hazard
+    assert stats["cox_hazard_ratio_per_year"] > 1.0

@@ -12,12 +12,19 @@ type ChatTurn = {
 interface AICompanionProps {
   analysis?: AnalysisResponse | null;
   biomarkers?: BiomarkerItem[];
+  allowCloudLlm?: boolean;
+  onEnableCloudLlm?: () => void;
 }
 
 const welcomeMessage =
   "Hi! I’m your Healthspan Passport assistant. Ask me about biomarkers, lab reports, or general health science. Upload and confirm a report to let me explain your own results. I provide education, not diagnosis or treatment.";
 
-export const AICompanion: React.FC<AICompanionProps> = ({ analysis = null, biomarkers = [] }) => {
+export const AICompanion: React.FC<AICompanionProps> = ({
+  analysis = null,
+  biomarkers = [],
+  allowCloudLlm = false,
+  onEnableCloudLlm,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatTurn[]>([
     { role: "assistant", content: welcomeMessage },
@@ -30,6 +37,10 @@ export const AICompanion: React.FC<AICompanionProps> = ({ analysis = null, bioma
     event.preventDefault();
     const message = input.trim();
     if (!message || loading) return;
+    if (!allowCloudLlm) {
+      setError("Cloud AI consent is off. Enable Cloud AI consent first to ask questions.");
+      return;
+    }
 
     setError(null);
     setLoading(true);
@@ -53,6 +64,7 @@ export const AICompanion: React.FC<AICompanionProps> = ({ analysis = null, bioma
           chronological_age: analysis?.chronological_age ?? null,
           phenoage: analysis?.phenoage?.phenoage ?? null,
           age_acceleration: analysis?.phenoage?.age_acceleration ?? null,
+          allow_cloud_llm: allowCloudLlm,
         }),
       });
 
@@ -122,6 +134,22 @@ export const AICompanion: React.FC<AICompanionProps> = ({ analysis = null, bioma
           </div>
 
           <form onSubmit={handleSubmit} className="border-t border-slate-200 bg-white p-3">
+            {!allowCloudLlm && (
+              <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 flex items-center justify-between gap-2">
+                <span>
+                  Cloud AI is off (default). Opt in to send redacted questions to OpenRouter.
+                </span>
+                {onEnableCloudLlm && (
+                  <button
+                    type="button"
+                    onClick={onEnableCloudLlm}
+                    className="shrink-0 rounded bg-amber-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-amber-700"
+                  >
+                    Allow
+                  </button>
+                )}
+              </div>
+            )}
             {error && (
               <p className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
                 {error}
@@ -135,13 +163,13 @@ export const AICompanion: React.FC<AICompanionProps> = ({ analysis = null, bioma
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 maxLength={2000}
-                placeholder="Ask a question…"
-                className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                disabled={loading}
+                placeholder={allowCloudLlm ? "Ask a question…" : "Enable Cloud AI consent to chat…"}
+                className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                disabled={loading || !allowCloudLlm}
               />
               <button
                 type="submit"
-                disabled={loading || !input.trim()}
+                disabled={loading || !allowCloudLlm || !input.trim()}
                 className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Send

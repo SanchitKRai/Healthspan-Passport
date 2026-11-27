@@ -1,8 +1,8 @@
 import os
 import logging
 from pathlib import Path
-from typing import List, Dict, Any
-from fastapi import FastAPI, UploadFile, File, HTTPException, Response
+from typing import List, Dict, Any, Optional
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -56,7 +56,10 @@ def health_check() -> Dict[str, str]:
 
 
 @app.post("/api/extract", response_model=ExtractionResponse)
-def extract_report(file: UploadFile = File(...)) -> ExtractionResponse:
+def extract_report(
+    file: UploadFile = File(...),
+    allow_cloud_llm: bool = Form(False),
+) -> ExtractionResponse:
     """Upload a PDF or image blood test report and extract structured biomarker data."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename missing from upload")
@@ -74,8 +77,8 @@ def extract_report(file: UploadFile = File(...)) -> ExtractionResponse:
             detail=f"Failed to parse file {file.filename}: {extract_meta.get('error')}"
         )
 
-    logger.info(f"Text extracted ({len(raw_text)} chars). Calling biomarker extraction LLM pipeline...")
-    extraction_result = extract_biomarkers_with_llm(raw_text)
+    logger.info(f"Text extracted ({len(raw_text)} chars). Calling biomarker extraction pipeline (allow_cloud_llm={allow_cloud_llm})...")
+    extraction_result = extract_biomarkers_with_llm(raw_text, allow_cloud_llm=allow_cloud_llm)
     return extraction_result
 
 
@@ -99,8 +102,8 @@ def list_sample_reports() -> List[Dict[str, Any]]:
 
 
 @app.post("/api/extract-sample/{filename}", response_model=ExtractionResponse)
-def extract_sample_report(filename: str) -> ExtractionResponse:
-    """Extract biomarkers directly from one of the pre-loaded sample reports."""
+def extract_sample_report(filename: str, allow_cloud_llm: bool = False) -> ExtractionResponse:
+    """Extract biomarkers directly from one of the pre-loaded synthetic sample reports."""
     file_path = SAMPLE_REPORTS_DIR / filename
     if not file_path.resolve().is_relative_to(SAMPLE_REPORTS_DIR.resolve()):
         raise HTTPException(status_code=400, detail="Invalid file path")
@@ -110,7 +113,7 @@ def extract_sample_report(filename: str) -> ExtractionResponse:
 
     file_bytes = file_path.read_bytes()
     raw_text, _ = extract_text_from_file(file_bytes, filename)
-    return extract_biomarkers_with_llm(raw_text)
+    return extract_biomarkers_with_llm(raw_text, allow_cloud_llm=allow_cloud_llm)
 
 
 POPULATION_CAVEAT_NOTE = (
@@ -186,6 +189,8 @@ def chat_with_healthspan_companion(req: ChatRequest) -> ChatResponse:
     """Answer an educational question using only the confirmed report context supplied."""
     try:
         return answer_health_question(req)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

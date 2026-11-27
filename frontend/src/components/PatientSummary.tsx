@@ -4,12 +4,20 @@ import { PatientInfo, ExtractionMetadata } from "../types/biomarker";
 interface PatientSummaryProps {
   patient: PatientInfo;
   metadata: ExtractionMetadata;
+  isSyntheticDemo?: boolean;
 }
 
-export const PatientSummary: React.FC<PatientSummaryProps> = ({ patient, metadata }) => {
+export const PatientSummary: React.FC<PatientSummaryProps> = ({ patient, metadata, isSyntheticDemo = false }) => {
   return (
     <div className="border p-4 mb-6 rounded bg-gray-50 text-sm">
-      <h2 className="font-semibold text-base mb-2">Extraction Summary & Patient Info</h2>
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        <h2 className="font-semibold text-base">Extraction Summary & Patient Info</h2>
+        {isSyntheticDemo && (
+          <span className="text-xs bg-amber-100 text-amber-900 border border-amber-300 font-semibold px-2 py-0.5 rounded">
+            Demo data (synthetic)
+          </span>
+        )}
+      </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div>
           <span className="text-gray-500 block">Patient Name:</span>

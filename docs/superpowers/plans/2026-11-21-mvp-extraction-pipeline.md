@@ -1,5 +1,7 @@
 # MVP Extraction Pipeline Implementation Plan
 
+> **INTEGRITY AUDIT NOTICE (2026-11-27):** Historical plan preserved for reference. On branch `day1-integrity`, note that `backend/app/llm/client.py` uses `nvidia/nemotron-3.5-lightning` and `moonshotai/kimi-k2`, the 15 reports in `data/sample_reports/` are synthetic, and the offline simulated bake-off report (`docs/BAKEOFF_RESULTS.md`) was removed.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build and verify an end-to-end report extraction pipeline with a FastAPI backend, OpenRouter LLM extraction (Nemotron/Kimi), and a Next.js frontend showing extracted biomarkers in a table from 15 diverse lab reports.

@@ -86,7 +86,7 @@ def test_llm_retry_on_malformed_json():
     
     with patch("app.llm.client.call_openrouter_api") as mock_api:
         mock_api.side_effect = ["NOT VALID JSON", valid_payload]
-        res = extract_biomarkers_with_llm("sample text", api_key="sk-test-key")
+        res = extract_biomarkers_with_llm("sample text", api_key="sk-test-key", allow_cloud_llm=True)
         assert mock_api.call_count == 2
         assert "(retry)" in res.extraction_metadata.model_used
         assert len(res.biomarkers) == 1
@@ -103,10 +103,57 @@ def test_llm_fallback_to_secondary_model():
     
     with patch("app.llm.client.call_openrouter_api") as mock_api:
         mock_api.side_effect = [RuntimeError("Primary model 500 error"), valid_payload]
-        res = extract_biomarkers_with_llm("sample text", api_key="sk-test-key", primary_model="nemotron", fallback_model="kimi")
+        res = extract_biomarkers_with_llm(
+            "sample text",
+            api_key="sk-test-key",
+            primary_model="nemotron",
+            fallback_model="kimi",
+            allow_cloud_llm=True,
+        )
         assert mock_api.call_count == 2
         assert res.extraction_metadata.model_used == "kimi"
         assert res.patient_info.name == "Fallback User"
+
+
+def test_llm_consent_gating_blocks_outbound_calls():
+    from app.llm.client import extract_biomarkers_with_llm
+
+    with patch("app.llm.client.call_openrouter_api") as mock_api:
+        res = extract_biomarkers_with_llm(
+            "Patient Name: Priya Nair\nFasting Glucose: 102 mg/dL",
+            api_key="sk-test-key",
+        )
+        assert mock_api.call_count == 0
+        assert "local-only" in res.extraction_metadata.model_used
+        assert any(b.standard_id == "glucose_fasting" and b.value == 102.0 for b in res.biomarkers)
+
+
+def test_llm_redacts_pii_before_outbound_call():
+    from app.llm.client import extract_biomarkers_with_llm
+
+    raw_report = (
+        "Patient Name: Priya Nair\n"
+        "Phone: +91 9811122233\n"
+        "Email: priya.nair@example.com\n"
+        "Aadhaar: 4321 8765 1234\n"
+        "DOB: 1985-06-12\n"
+        "Fasting Glucose: 102 mg/dL\n"
+    )
+    valid_payload = json.dumps({
+        "patient_info": {},
+        "biomarkers": [{"standard_id": "glucose_fasting", "value": 102.0, "unit": "mg/dL"}]
+    })
+
+    with patch("app.llm.client.call_openrouter_api", return_value=valid_payload) as mock_api:
+        extract_biomarkers_with_llm(raw_report, api_key="sk-test-key", allow_cloud_llm=True)
+        assert mock_api.call_count == 1
+        sent_prompt = mock_api.call_args[0][1]
+        assert "Priya Nair" not in sent_prompt
+        assert "9811122233" not in sent_prompt
+        assert "priya.nair@example.com" not in sent_prompt
+        assert "4321 8765 1234" not in sent_prompt
+        assert "1985-06-12" not in sent_prompt
+        assert "102" in sent_prompt
 
 
 def test_heuristic_regex_does_not_bleed_across_lines():

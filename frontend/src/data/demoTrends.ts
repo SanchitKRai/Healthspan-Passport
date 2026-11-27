@@ -17,6 +17,7 @@ export interface TrendReportSnapshot {
   notes: string;
 }
 
+// SYNTHETIC 3-year longitudinal demo dataset for UI demonstration only (not real patient data).
 export const DEMO_3YEAR_HISTORY: TrendReportSnapshot[] = [
   {
     id: "hist_2024_03",

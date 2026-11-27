@@ -17,6 +17,7 @@ from app.schemas.biomarker import (
     PHENOAGE_CORE_BIOMARKERS,
 )
 from app.llm.prompts import SYSTEM_PROMPT, build_extraction_prompt, build_retry_prompt
+from app.llm.redact import redact_pii
 
 logger = logging.getLogger(__name__)
 
@@ -288,14 +289,22 @@ def extract_biomarkers_with_llm(
     api_key: Optional[str] = None,
     primary_model: Optional[str] = None,
     fallback_model: Optional[str] = None,
+    allow_cloud_llm: bool = False,
 ) -> ExtractionResponse:
     """
     Main extraction pipeline:
-    1. Try Primary Model (Nemotron).
-    2. On failure or error, try Fallback Model (Kimi).
-    3. If JSON validation fails, execute 1 retry with feedback.
-    4. If no API key or all external calls fail, invoke heuristic fallback.
+    1. If cloud LLM consent is not granted (allow_cloud_llm=False) or no API key is set,
+       run local heuristic extraction only (no outbound network call).
+    2. When consented, redact PII from raw_text BEFORE constructing prompts.
+    3. Try Primary Model (Nemotron), then Fallback Model (Kimi), with 1 JSON retry.
+    4. If all external calls fail, invoke heuristic fallback.
     """
+    if not allow_cloud_llm:
+        logger.info("Cloud LLM consent not granted (allow_cloud_llm=False). Using local heuristic extraction engine.")
+        res = heuristic_extract(raw_text)
+        res.extraction_metadata.model_used = "heuristic-rule-engine (local-only)"
+        return res
+
     api_key = api_key or os.getenv("OPENROUTER_API_KEY")
     primary = primary_model or os.getenv("OPENROUTER_PRIMARY_MODEL", PRIMARY_MODEL)
     fallback = fallback_model or os.getenv("OPENROUTER_FALLBACK_MODEL", FALLBACK_MODEL)
@@ -304,8 +313,12 @@ def extract_biomarkers_with_llm(
         logger.info("No OPENROUTER_API_KEY set. Using local heuristic extraction engine.")
         return heuristic_extract(raw_text)
 
+    redacted_text, redaction_counts = redact_pii(raw_text)
+    if redaction_counts:
+        logger.info("Redacted PII categories before outbound OpenRouter extraction: %s", sorted(redaction_counts.keys()))
+
     start_time = time.time()
-    prompt = build_extraction_prompt(raw_text)
+    prompt = build_extraction_prompt(redacted_text)
 
     # 1. Try Primary Model
     for model_candidate in [primary, fallback]:
@@ -316,14 +329,14 @@ def extract_biomarkers_with_llm(
 
             # Try parsing
             try:
-                return parse_and_validate_extraction(raw_response, raw_text, model_candidate, duration_ms)
+                return parse_and_validate_extraction(raw_response, redacted_text, model_candidate, duration_ms)
             except Exception as parse_err:
                 logger.warning(f"Validation failed on {model_candidate} output: {parse_err}. Initiating 1 retry.")
                 # One retry with error feedback
-                retry_prompt = build_retry_prompt(raw_text, str(parse_err))
+                retry_prompt = build_retry_prompt(redacted_text, str(parse_err))
                 retry_response = call_openrouter_api(model_candidate, retry_prompt, api_key)
                 duration_ms = int((time.time() - start_time) * 1000)
-                return parse_and_validate_extraction(retry_response, raw_text, f"{model_candidate} (retry)", duration_ms)
+                return parse_and_validate_extraction(retry_response, redacted_text, f"{model_candidate} (retry)", duration_ms)
 
         except Exception as model_err:
             logger.error(f"Error calling {model_candidate}: {model_err}")

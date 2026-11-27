@@ -102,13 +102,24 @@ export default function TrendsView({ currentAnalysis }: TrendsViewProps) {
     "Total Cholesterol (mg/dL)": s.biomarkers.total_cholesterol,
   }));
 
+  const hasDemoSnapshots = snapshots.some((s) =>
+    DEMO_3YEAR_HISTORY.some((d) => d.id === s.id)
+  );
+
   return (
     <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm my-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 border-b border-slate-100 pb-4">
         <div>
-          <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <span className="text-blue-600">📈</span> Longitudinal Healthspan & Biomarker Trajectory
-          </h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <span className="text-blue-600">📈</span> Longitudinal Healthspan & Biomarker Trajectory
+            </h3>
+            {hasDemoSnapshots && (
+              <span className="text-xs bg-amber-100 text-amber-900 border border-amber-300 font-semibold px-2 py-0.5 rounded">
+                Demo data (synthetic)
+              </span>
+            )}
+          </div>
           <p className="text-sm text-slate-500 mt-1">
             Track multi-year biological age trajectory, glycemic control, and systemic inflammation over time.
           </p>
@@ -127,14 +138,14 @@ export default function TrendsView({ currentAnalysis }: TrendsViewProps) {
             onClick={handleLoadDemo}
             className="text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded transition-colors"
           >
-            Load Demo 3-Year History
+            Load Demo 3-Year History (Synthetic)
           </button>
           <button
             onClick={handleClearData}
             className="text-xs font-medium text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded transition-colors"
             title="Wipe all locally stored health records"
           >
-            Privacy Mode: Clear Data
+            Clear Local Data
           </button>
         </div>
       </div>
@@ -274,13 +285,13 @@ export default function TrendsView({ currentAnalysis }: TrendsViewProps) {
 
           <div className="p-3 bg-slate-50 rounded border border-slate-200 text-xs text-slate-600 flex items-center justify-between">
             <span>
-              🔒 <strong>Client-Side Privacy Guarantee:</strong> All longitudinal records are stored strictly in your browser&apos;s local storage (`localStorage`). No patient identity or biomarker histories are persisted to server disks.
+              🔒 <strong>Local Browser Storage:</strong> Longitudinal records are stored in your browser&apos;s `localStorage` and are not persisted to server disks. Cloud AI features only run if you opt in above (with PII redaction).
             </span>
             <button
               onClick={handleClearData}
               className="text-xs text-rose-600 hover:underline font-medium ml-4 shrink-0"
             >
-              Purge All Data
+              Clear Local Data
             </button>
           </div>
         </div>
