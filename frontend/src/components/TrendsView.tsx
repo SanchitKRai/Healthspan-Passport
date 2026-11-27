@@ -145,7 +145,7 @@ export default function TrendsView({ currentAnalysis }: TrendsViewProps) {
             className="text-xs font-medium text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded transition-colors"
             title="Wipe all locally stored health records"
           >
-            Privacy Mode: Clear Data
+            Clear Local Data
           </button>
         </div>
       </div>
@@ -285,13 +285,13 @@ export default function TrendsView({ currentAnalysis }: TrendsViewProps) {
 
           <div className="p-3 bg-slate-50 rounded border border-slate-200 text-xs text-slate-600 flex items-center justify-between">
             <span>
-              🔒 <strong>Client-Side Privacy Guarantee:</strong> All longitudinal records are stored strictly in your browser&apos;s local storage (`localStorage`). No patient identity or biomarker histories are persisted to server disks.
+              🔒 <strong>Local Browser Storage:</strong> Longitudinal records are stored in your browser&apos;s `localStorage` and are not persisted to server disks. Cloud AI features only run if you opt in above (with PII redaction).
             </span>
             <button
               onClick={handleClearData}
               className="text-xs text-rose-600 hover:underline font-medium ml-4 shrink-0"
             >
-              Purge All Data
+              Clear Local Data
             </button>
           </div>
         </div>

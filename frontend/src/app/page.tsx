@@ -12,6 +12,7 @@ import TrendsView from "../components/TrendsView";
 import BilingualExplainer, { ExplanationData } from "../components/BilingualExplainer";
 import ClinicianHandoff from "../components/ClinicianHandoff";
 import AICompanion from "../components/AICompanion";
+import ConsentToggle from "../components/ConsentToggle";
 import { API_BASE_URL } from "../config/api";
 
 export default function Home() {
@@ -20,6 +21,7 @@ export default function Home() {
   const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
   const [explanation, setExplanation] = useState<ExplanationData | null>(null);
   const [isExplaining, setIsExplaining] = useState<boolean>(false);
+  const [allowCloudLlm, setAllowCloudLlm] = useState<boolean>(false);
 
   const handleReset = () => {
     setExtractedData(null);
@@ -93,10 +95,17 @@ export default function Home() {
 
   return (
     <div className="space-y-8">
-      <AICompanion analysis={analysisData} biomarkers={analysisData?.normalized_biomarkers ?? []} />
+      <AICompanion
+        analysis={analysisData}
+        biomarkers={analysisData?.normalized_biomarkers ?? []}
+        allowCloudLlm={allowCloudLlm}
+        onEnableCloudLlm={() => setAllowCloudLlm(true)}
+      />
+      <ConsentToggle allowCloudLlm={allowCloudLlm} onChange={setAllowCloudLlm} />
       {!extractedData && (
         <>
           <UploadSection
+            allowCloudLlm={allowCloudLlm}
             onExtractionSuccess={(result, isDemo) => {
               setExtractedData(result);
               setIsSyntheticSample(Boolean(isDemo));

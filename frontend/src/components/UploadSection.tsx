@@ -6,9 +6,13 @@ import { SampleReportItem, ExtractionResponse } from "../types/biomarker";
 
 interface UploadSectionProps {
   onExtractionSuccess: (data: ExtractionResponse, isSyntheticDemo?: boolean) => void;
+  allowCloudLlm?: boolean;
 }
 
-export const UploadSection: React.FC<UploadSectionProps> = ({ onExtractionSuccess }) => {
+export const UploadSection: React.FC<UploadSectionProps> = ({
+  onExtractionSuccess,
+  allowCloudLlm = false,
+}) => {
   const [file, setFile] = useState<File | null>(null);
   const [sampleReports, setSampleReports] = useState<SampleReportItem[]>([]);
   const [selectedSample, setSelectedSample] = useState<string>("");
@@ -40,6 +44,7 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onExtractionSucces
 
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("allow_cloud_llm", String(allowCloudLlm));
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/extract`, {
@@ -68,9 +73,12 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onExtractionSucces
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/extract-sample/${filename}`, {
-        method: "POST",
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/api/extract-sample/${encodeURIComponent(filename)}?allow_cloud_llm=${allowCloudLlm}`,
+        {
+          method: "POST",
+        }
+      );
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
@@ -151,10 +159,14 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onExtractionSucces
             </svg>
           </div>
           <div className="text-sm font-semibold text-slate-800">
-            Extracting Biomarkers & Running Dual-Model LLM Parser...
+            {allowCloudLlm
+              ? "Extracting Biomarkers & Running Redacted Cloud LLM Parser..."
+              : "Extracting Biomarkers Locally (Offline OCR + Regex Rules)..."}
           </div>
           <div className="text-xs text-slate-500 mt-1">
-            Running OCR text extraction, regex bounding, and physiological range verification.
+            {allowCloudLlm
+              ? "Stripping PII before OpenRouter parsing and running physiological range checks."
+              : "Running local text extraction and physiological range checks (no data sent to cloud LLMs)."}
           </div>
         </div>
       )}

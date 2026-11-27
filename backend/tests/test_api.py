@@ -43,3 +43,47 @@ def test_api_extract_file():
     assert "biomarkers" in res_json
     assert "extraction_metadata" in res_json
     assert len(res_json["biomarkers"]) >= 2
+
+
+def test_api_extract_consent_gating(monkeypatch):
+    from unittest.mock import patch
+    from app.main import app
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
+    client = TestClient(app)
+
+    report_content = b"Patient Name: Anita Sharma\nFasting Blood Glucose: 92 mg/dL\n"
+
+    # Default (no allow_cloud_llm) must NOT invoke OpenRouter
+    with patch("app.llm.client.call_openrouter_api") as mock_api:
+        files = {"file": ("report.txt", io.BytesIO(report_content), "text/plain")}
+        resp = client.post("/api/extract", files=files)
+        assert resp.status_code == 200
+        assert mock_api.call_count == 0
+        assert "local-only" in resp.json()["extraction_metadata"]["model_used"]
+
+    # Explicit opt-in allow_cloud_llm=true passes redacted text to OpenRouter
+    with patch("app.llm.client.call_openrouter_api") as mock_api:
+        mock_api.return_value = '{"patient_info": {}, "biomarkers": [{"standard_id": "glucose_fasting", "value": 92.0, "unit": "mg/dL"}]}'
+        files = {"file": ("report.txt", io.BytesIO(report_content), "text/plain")}
+        resp = client.post("/api/extract", files=files, data={"allow_cloud_llm": "true"})
+        assert resp.status_code == 200
+        assert mock_api.call_count == 1
+        sent_prompt = mock_api.call_args[0][1]
+        assert "Anita Sharma" not in sent_prompt
+        assert "92" in sent_prompt
+
+
+def test_api_sample_extract_consent_gating(monkeypatch):
+    from unittest.mock import patch
+    from app.main import app
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key")
+    client = TestClient(app)
+
+    with patch("app.llm.client.call_openrouter_api") as mock_api:
+        resp = client.post("/api/extract-sample/01_dr_lal_healthy_adult.pdf")
+        assert resp.status_code == 200
+        assert mock_api.call_count == 0
+        assert "local-only" in resp.json()["extraction_metadata"]["model_used"]
+
