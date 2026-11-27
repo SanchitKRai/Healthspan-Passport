@@ -16,12 +16,14 @@ import { API_BASE_URL } from "../config/api";
 
 export default function Home() {
   const [extractedData, setExtractedData] = useState<ExtractionResponse | null>(null);
+  const [isSyntheticSample, setIsSyntheticSample] = useState<boolean>(false);
   const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
   const [explanation, setExplanation] = useState<ExplanationData | null>(null);
   const [isExplaining, setIsExplaining] = useState<boolean>(false);
 
   const handleReset = () => {
     setExtractedData(null);
+    setIsSyntheticSample(false);
     setAnalysisData(null);
     setExplanation(null);
   };
@@ -95,8 +97,9 @@ export default function Home() {
       {!extractedData && (
         <>
           <UploadSection
-            onExtractionSuccess={(result) => {
+            onExtractionSuccess={(result, isDemo) => {
               setExtractedData(result);
+              setIsSyntheticSample(Boolean(isDemo));
               setAnalysisData(null);
               setExplanation(null);
             }}
@@ -129,6 +132,7 @@ export default function Home() {
           <PatientSummary
             patient={extractedData.patient_info}
             metadata={extractedData.extraction_metadata}
+            isSyntheticDemo={isSyntheticSample}
           />
 
           {/* Analysis Dashboard (renders after user confirmation) */}

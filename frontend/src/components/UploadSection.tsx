@@ -5,7 +5,7 @@ import { API_BASE_URL } from "../config/api";
 import { SampleReportItem, ExtractionResponse } from "../types/biomarker";
 
 interface UploadSectionProps {
-  onExtractionSuccess: (data: ExtractionResponse) => void;
+  onExtractionSuccess: (data: ExtractionResponse, isSyntheticDemo?: boolean) => void;
 }
 
 export const UploadSection: React.FC<UploadSectionProps> = ({ onExtractionSuccess }) => {
@@ -53,7 +53,7 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onExtractionSucces
       }
 
       const result: ExtractionResponse = await response.json();
-      onExtractionSuccess(result);
+      onExtractionSuccess(result, false);
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred during extraction");
     } finally {
@@ -78,7 +78,7 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onExtractionSucces
       }
 
       const result: ExtractionResponse = await response.json();
-      onExtractionSuccess(result);
+      onExtractionSuccess(result, true);
     } catch (err: any) {
       setError(err.message || "Failed extracting sample report");
     } finally {
@@ -100,12 +100,14 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onExtractionSucces
       {/* 1-Click Quick Demo Banner */}
       <div className="mb-6 p-4 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-blue-600 font-bold">⚡ Hackathon Judge Quick Demo:</span>
-            <span className="text-xs bg-blue-100 text-blue-800 font-semibold px-2 py-0.5 rounded">1-Click Test</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-blue-600 font-bold">⚡ Quick Demo:</span>
+            <span className="text-xs bg-amber-100 text-amber-900 border border-amber-300 font-semibold px-2 py-0.5 rounded">
+              Demo data (synthetic)
+            </span>
           </div>
           <p className="text-xs text-slate-600 mt-1">
-            Test the entire pipeline instantly with a real Indian lab panel (Metropolis Healthcare: Impaired fasting glucose, elevated hs-CRP, and dyslipidemia).
+            Test the pipeline with a synthetic Indian lab panel (Metropolis Healthcare layout: impaired fasting glucose, elevated hs-CRP, and dyslipidemia).
           </p>
         </div>
         <button
@@ -182,8 +184,13 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onExtractionSucces
 
         {/* Pre-loaded Sample Selector */}
         <div>
-          <h3 className="font-semibold text-sm text-slate-800 mb-1">Option B: Choose from 15 Test Samples</h3>
-          <p className="text-xs text-slate-500 mb-3">Includes Dr. Lal, Metropolis, Apollo, Quest, plus skewed phone captures.</p>
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            <h3 className="font-semibold text-sm text-slate-800">Option B: Choose from 15 Sample Reports</h3>
+            <span className="text-[11px] bg-amber-100 text-amber-900 border border-amber-300 font-semibold px-2 py-0.5 rounded">
+              Demo data (synthetic)
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mb-3">Includes synthetic Dr. Lal, Metropolis, Apollo, Quest layouts, plus synthetic skewed phone captures.</p>
           <div className="space-y-3">
             <select
               value={selectedSample}

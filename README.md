@@ -1,12 +1,12 @@
 # Healthspan Passport 🩺📊
-> **From raw blood test reports to biological age, longitudinal trends, and clinician handoff.**
+> **From blood test reports to biological age, preventive flags, and clinician handoff.**
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688.svg?logo=fastapi)](https://fastapi.tiangolo.com)
 [![Next.js 15](https://img.shields.io/badge/Next.js-15-black.svg?logo=next.js)](https://nextjs.org)
 [![HL7 FHIR R4](https://img.shields.io/badge/FHIR-R4_LOINC-red.svg)](https://hl7.org/fhir)
 [![Tests](https://img.shields.io/badge/pytest-31_passed-brightgreen.svg)](https://pytest.org)
 
-**Healthspan Passport** ingests routine laboratory blood test reports (digital PDFs or mobile phone camera photos), extracts and standardizes 25+ clinical biomarkers, normalizes units to Indian clinical ranges, computes the peer-reviewed **Levine et al. (2018) PhenoAge** biological age model, identifies non-diagnostic multi-organ risk flags, and produces an exportable **one-page telemedicine doctor PDF** and an **HL7 FHIR R4 Observation Bundle**.
+**Healthspan Passport** ingests blood test reports (PDFs or photos), extracts and standardizes 25+ clinical biomarkers, normalizes units, computes the published **Levine et al. (2018) PhenoAge** model, flags preventive multi-organ risks, and exports a **one-page telemedicine doctor PDF** and an **HL7 FHIR R4 Observation Bundle**.
 
 ---
 
@@ -15,13 +15,13 @@
 ```mermaid
 flowchart TD
     subgraph INGESTION["1. Document Ingestion & Extraction"]
-        A[Raw Blood Report: PDF / JPEG / PNG] --> B{Document Format}
+        A[Blood Report: PDF / JPEG / PNG] --> B{Document Format}
         B -->|Vector PDF| C[pdfplumber Text Extractor]
         B -->|Photo / Scan| D[RapidOCR Preprocessor]
         C --> E[Dual-Model OpenRouter Parser]
         D --> E
-        E -->|Primary| F[Nvidia Nemotron 70B]
-        E -->|Fallback| G[Moonshot Kimi]
+        E -->|Primary| F[nvidia/nemotron-3.5-lightning]
+        E -->|Fallback| G[moonshotai/kimi-k2]
         E -->|Offline Guard| H[Deterministic Heuristic Fallback]
     end
 
@@ -45,7 +45,7 @@ flowchart TD
 
     subgraph DIFFERENTIATORS["4. Interactive Differentiators"]
         P --> R[Interactive What-If Longevity Simulator]
-        P --> S[Longitudinal Trends Engine & Privacy Purge]
+        P --> S[Longitudinal Trends Engine - Demo Synthetic & Local Storage]
         Q --> T[Bilingual Plain-Language Explainer - EN / HI]
         T --> U[Web Speech API Audio Narration]
     end
@@ -71,7 +71,7 @@ cd frontend && npm install && cd ..
 
 ### 2. Configure Environment (Optional)
 ```bash
-# Optional: Set OpenRouter key for cloud LLM reasoning (runs offline deterministic heuristic if unset)
+# Optional: Set OpenRouter key for cloud LLM extraction (runs offline heuristic regex fallback if unset)
 export OPENROUTER_API_KEY="your-openrouter-key"
 ```
 
@@ -84,82 +84,68 @@ cd backend && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --relo
 cd frontend && npm run dev
 ```
 
-Visit **`http://localhost:3000`** to test extraction via drag-and-drop or click the **"Launch Live Pre-Diabetic Demo"** banner to run immediately.
+Visit **`http://localhost:3000`** to upload a report or test with the **15 synthetic sample reports** (`data/sample_reports/`).
 
 ---
 
-## 📊 Scientific & Extraction Validation Summary
+## 📊 Validation Status
 
-Healthspan Passport was rigorously benchmarked across **15 diverse laboratory reports** (Dr. Lal PathLabs, Metropolis Healthcare, Apollo Diagnostics, Quest Diagnostics, and skewed mobile camera captures) against hand-curated ground truth (`data/ground_truth.json`), as well as validated against the **CDC NHANES cohort ($N = 10,724$)**:
-
-### Extraction Benchmark Results (`docs/VALIDATION_RESULTS.md`)
-| Metric | Measured Value | Standard / Target | Clinical & Safety Implication |
-| :--- | :--- | :--- | :--- |
-| **Structured Digital PDF Accuracy** | **88.1%** | > 85.0% | High-fidelity extraction on routine digital lab PDFs |
-| **Overall Field-Level Accuracy** | **63.8%** | > 60.0% | Ingests 116 expected fields across varied formats |
-| **Safety-Critical Unflagged Error Rate** | **1.33%** | < 5.0% | **Zero silent errors**: All abnormal or low-confidence values require confirmation |
-| **Average PDF Extraction Latency** | **27 ms** | < 250 ms | Instantaneous parsing for telemedicine workflows |
-
-### NHANES PhenoAge Biological Age & Mortality Validation (`data/nhanes_cohort.csv`)
-Replication of the Levine et al. (*Aging*, 2018) PhenoAge model on the NHANES validation cohort with 10-year linked National Death Index (NDI) mortality follow-up ($N = 10,724$ adults aged 20–84):
-
-- **Correlation with Chronological Age:** **$r = 0.943$** ($p < 0.0001$).
-- **Adjusted Mortality Hazard Ratio:** **$\text{HR} = 1.093$ per +1 year of PhenoAge acceleration** (95% CI: 1.081–1.106, $p < 0.0001$, controlling for chronological age).
-- **10-Year Mortality Rate by Aging Quartile:**
-  - **Q1 (Decelerated Aging, $\Delta \le -12.2$ yrs):** **1.34%** (1.00x reference)
-  - **Q2 (Normal-Low Aging, $\Delta = -9.6$ yrs):** **3.18%** (2.37x relative risk)
-  - **Q3 (Normal-High Aging, $\Delta = -5.1$ yrs):** **6.36%** (4.74x relative risk)
-  - **Q4 (Accelerated Aging, $\Delta \ge +1.5$ yrs):** **17.32%** (**12.92x relative risk vs. Q1!**)
-- **Validation Plot:** Stored at [`docs/nhanes_validation.png`](./docs/nhanes_validation.png).
+- **(a) PhenoAge Engine (Levine et al., 2018):** Implemented using the published coefficients and Gompertz parameters in [`backend/app/core/phenoage.py`](./backend/app/core/phenoage.py) and unit-tested in `pytest` (`31 passed`). [`data/synthetic_cohort_unit_test.csv`](./data/synthetic_cohort_unit_test.csv) is a **synthetic** cohort generated by [`backend/scripts/validate_nhanes.py`](./backend/scripts/validate_nhanes.py) strictly to unit-test the scoring/regression code path (not clinical validation).
+- **(b) Real-NHANES Replication:** **In progress** (placeholder — scheduled for Task 3 using public-use NHANES and public-use NCHS linked mortality files).
+- **(c) Extraction Benchmark (`docs/VALIDATION_RESULTS.md`, `data/benchmark_metrics.json`):** Measured across **15 synthetic reports** generated by [`backend/scripts/generate_sample_reports.py`](./backend/scripts/generate_sample_reports.py) in **offline heuristic mode** (`OPENROUTER_API_KEY` unset):
+  - **Overall Field-Level Accuracy:** **63.8%** (74 / 116 fields)
+  - **Digital PDF Accuracy:** **88.1%** (74 / 84 fields across 8 synthetic PDFs)
+  - **Phone Photo Accuracy (Offline Mode):** **0.0%** (0 / 32 fields across 7 synthetic skewed/shadowed JPGs)
+  - **Unflagged Error Rate:** **1.33%** (1 / 75 extracted fields)
+  - **Limitation:** Accuracy was measured on **synthetic** reports whose layouts the regex extractor was developed against, so **88.1%** likely overstates performance on real lab reports, and phone photos extract **0%** in offline mode. Live OpenRouter LLM comparison (`nvidia/nemotron-3.5-lightning` vs. `moonshotai/kimi-k2` via `backend/scripts/bakeoff.py`) has not yet been run.
 
 ---
 
-## 🌟 Key Features & Hackathon Differentiators
+## 🌟 Key Features
 
 ### 1. Telemedicine Clinician Handoff (`POST /api/export/pdf` & `POST /api/export/fhir`)
-- **One-Page Doctor PDF:** Generates a single A4 summary designed for telemedicine consultations (patient demographics, PhenoAge box, full table of normalized biomarkers with Indian reference ranges, active risk flags, and top 3 doctor discussion questions).
-- **HL7 FHIR R4 JSON Bundle:** Produces standard FHIR `Observation` resources mapped to official **LOINC codes** (e.g. Fasting Glucose `1558-6`, hs-CRP `30522-7`, Albumin `1751-7`, HbA1c `4548-4`) plus custom biological age observations with interactive code inspection modal.
+- **One-Page Doctor PDF:** Generates a single A4 summary for telemedicine consultations (demographics, PhenoAge box, normalized biomarkers with Indian reference ranges, active risk flags, and doctor questions).
+- **HL7 FHIR R4 JSON Bundle:** Produces FHIR `Observation` resources mapped to **LOINC codes** (e.g., Fasting Glucose `1558-6`, hs-CRP `30522-7`, Albumin `1751-7`, HbA1c `4548-4`) plus a PhenoAge observation.
 
 ### 2. Interactive What-If Longevity Simulator
-- Real-time client-side sliders for modifiable PhenoAge biomarkers (Fasting Glucose, hs-CRP, Albumin, Lymphocyte %, WBC, RDW).
-- Recalculates biological age and age acceleration instantly using the exact Levine 2018 Gompertz formula (e.g., *“Lowering Fasting Glucose from 118 to 92 mg/dL reduces PhenoAge by 1.8 years”*).
+- Real-time client-side sliders for modifiable PhenoAge biomarkers (Fasting Glucose, hs-CRP, Albumin, Lymphocyte %, WBC, RDW) recalculating using the Levine 2018 formula.
 
-### 3. Multi-Report Longitudinal Trends & Client-Side Privacy
-- Recharts longitudinal timelines showing PhenoAge trajectory vs. chronological age, alongside metabolic (Glucose, Cholesterol) and inflammatory (hs-CRP) trends over time.
-- **1-Click 3-Year Demo History:** Evaluators can inspect a 2024 $\to$ 2025 $\to$ 2026 trajectory without uploading 3 separate documents.
-- **Privacy Mode:** All historical records are saved strictly in browser `localStorage`. A prominent **“Purge All Data”** button guarantees zero residual tracking.
+### 3. Multi-Report Longitudinal Trends (with Synthetic Demo History)
+- Recharts longitudinal charts tracking PhenoAge vs. chronological age alongside glucose, hs-CRP, and total cholesterol.
+- **Demo Data (Synthetic):** Includes a 3-year **synthetic** demo trajectory (`frontend/src/data/demoTrends.ts`, 2024–2026) clearly badged in the UI, plus browser `localStorage` persistence and a clear-data button.
 
 ### 4. Plain-Language Bilingual Explainer & Voice Narration (`POST /api/explain`)
-- Non-diagnostic summaries available in **English** and **Hindi (हिंदी)**.
-- Evidence-based Indian vegetarian dietary guidance (substituting white rice with millets/dal, pairing vitamin C with iron-rich greens, plant protein distribution).
-- **Web Speech API Audio Narration:** Click *“Read Aloud”* / *“सुनें”* to have the summary narrated in English (`en-IN`) or Hindi (`hi-IN`).
+- Non-diagnostic rule-based summaries in **English** and **Hindi (हिंदी)** with Indian vegetarian nutrition guidance and Web Speech API narration (`en-IN` / `hi-IN`).
 
 ---
 
 ## 🛡️ Ethics, Safety & Clinical Limitations
 
 1. **Non-Diagnostic Educational Safeguard:**
-   Healthspan Passport is explicitly engineered as an educational healthspan tool and pre-consultation conversation starter. It does not provide medical diagnoses, treatment decisions, or clinical prescriptions.
-2. **Zero Silent Errors via Human Confirmation:**
-   Any extracted biomarker with confidence < 80% or outside physiological boundaries triggers `needs_review: true`, requiring the patient or clinician to confirm the value on screen before computing PhenoAge.
+   Healthspan Passport is an educational tool and pre-consultation summary. It does not provide medical diagnoses, treatment decisions, or prescriptions.
+2. **Human-in-the-Loop Confirmation:**
+   Extracted values below 80% confidence or outside physiological bounds trigger `needs_review: true` for user verification before PhenoAge is computed.
 3. **Strict Missing Biomarker Rule:**
-   The Levine PhenoAge model requires all 9 core biomarkers + chronological age. If any marker (such as hs-CRP) is missing, the algorithm strictly returns `phenoage: null` and highlights the missing tests—never imputing or guessing.
+   Levine PhenoAge requires all 9 biomarkers + chronological age. If any marker (such as hs-CRP) is missing, the engine returns `phenoage: null` and lists the missing tests without imputing values.
 4. **Population Transferability Notice:**
-   Levine PhenoAge was trained on the US NHANES population. Reference ranges have been customized for Indian clinical guidelines (ICMR), but biological age estimates for Indian individuals should always be evaluated alongside comprehensive clinical history.
+   Levine PhenoAge was trained on the US NHANES cohort. Reference ranges are adapted for Indian clinical thresholds, and biological age estimates for Indian users are informational only.
 
 ---
 
 ## 🧪 Testing & Verification
 
 ```bash
-# Run all 31 unit & integration tests
+# Run full backend test suite (31 tests)
 cd backend && pytest tests/
 
-# Re-run extraction benchmark
+# Re-run extraction benchmark on the 15 synthetic reports (offline heuristic mode)
 python backend/scripts/benchmark_extraction.py
 
-# Re-run NHANES validation and plot generator
+# Run PhenoAge code-path smoke test on the synthetic unit-test cohort
 python backend/scripts/validate_nhanes.py
+
+# Run live OpenRouter LLM bake-off (requires OPENROUTER_API_KEY)
+python backend/scripts/bakeoff.py
 
 # Production build frontend
 cd frontend && npm run build
@@ -168,4 +154,4 @@ cd frontend && npm run build
 ---
 
 ## 📄 License
-MIT License. Developed for Hackathon demonstration in Longevity & Healthspan Technology.
+MIT License.
