@@ -103,6 +103,83 @@ INDIAN_REFERENCE_RANGES = {
 }
 
 
+# Canonical biomarker aliases shared across normalization and outbound LLM text minimization.
+BIOMARKER_ALIASES: Dict[str, Tuple[str, ...]] = {
+    "albumin": ("albumin", "serum albumin", "s. albumin", "alb"),
+    "creatinine": ("creatinine", "serum creatinine", "s. creatinine", "creat"),
+    "glucose_fasting": (
+        "glucose",
+        "fasting glucose",
+        "fasting blood glucose",
+        "fasting blood sugar",
+        "blood glucose",
+        "blood sugar",
+        "plasma glucose",
+        "glucose fasting",
+        "fbs",
+        "fpg",
+    ),
+    "crp": (
+        "c-reactive protein",
+        "c reactive protein",
+        "hs-crp",
+        "hscrp",
+        "crp",
+    ),
+    "lymphocyte_pct": ("lymphocytes", "lymphocyte", "lymphs", "lymph"),
+    "mcv": ("mcv", "mean corpuscular volume", "mean cell volume"),
+    "rdw": ("rdw", "rdw-cv", "rdw-sd", "red cell distribution width", "red blood cell distribution width"),
+    "alp": ("alp", "alkaline phosphatase", "alk phos", "alk. phosphatase"),
+    "wbc": (
+        "wbc",
+        "wbc count",
+        "white blood cell",
+        "white blood cells",
+        "total leukocyte count",
+        "total leucocyte count",
+        "leukocyte",
+        "leucocyte",
+        "tlc",
+    ),
+    "hemoglobin": ("hemoglobin", "haemoglobin", "hgb", "hb"),
+    "platelets": ("platelet count", "platelets", "platelet", "plt"),
+    "hba1c": ("hba1c", "hb a1c", "glycated hemoglobin", "glycosylated hemoglobin", "a1c"),
+    "cholesterol_total": ("total cholesterol", "cholesterol total", "cholesterol", "serum cholesterol"),
+    "cholesterol_hdl": ("hdl cholesterol", "hdl-cholesterol", "hdl-c", "hdl", "high density lipoprotein"),
+    "cholesterol_ldl": ("ldl cholesterol", "ldl-cholesterol", "ldl-c", "ldl", "low density lipoprotein"),
+    "triglycerides": ("triglycerides", "triglyceride", "serum triglycerides", "tg"),
+    "vldl": ("vldl", "vldl cholesterol"),
+    "bilirubin_total": ("total bilirubin", "bilirubin total", "t. bilirubin", "serum bilirubin", "bilirubin"),
+    "ast_sgot": ("ast", "sgot", "aspartate aminotransferase"),
+    "alt_sgpt": ("alt", "sgpt", "alanine aminotransferase"),
+    "bun": ("bun", "blood urea nitrogen", "urea", "serum urea"),
+    "uric_acid": ("uric acid", "serum uric acid"),
+    "egfr": ("egfr", "estimated gfr", "glomerular filtration rate"),
+    "sodium": ("sodium", "serum sodium", "na+"),
+    "potassium": ("potassium", "serum potassium", "k+"),
+    "cbc_auxiliary": (
+        "hematocrit",
+        "haematocrit",
+        "hct",
+        "pcv",
+        "rbc",
+        "red blood cell",
+        "mch",
+        "mchc",
+        "neutrophils",
+        "monocytes",
+        "eosinophils",
+        "basophils",
+        "esr",
+        "ggt",
+        "ggtp",
+        "globulin",
+        "total protein",
+        "tsh",
+    ),
+}
+
+
 def clean_unit_str(unit: str) -> str:
     """Normalize unit string variations."""
     u = unit.lower().strip().replace(" ", "")

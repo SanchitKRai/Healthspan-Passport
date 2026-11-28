@@ -46,6 +46,12 @@ export const PatientSummary: React.FC<PatientSummaryProps> = ({ patient, metadat
         <span><strong>Review Flags:</strong> {metadata.low_confidence_count}</span>
       </div>
 
+      {metadata.model_used.includes("minimized-zero-lines-local-fallback") && (
+        <div className="mt-2 text-xs text-amber-800 bg-amber-50 p-2 rounded border border-amber-200">
+          <strong>Privacy Minimization Notice:</strong> No recognizable biomarker result lines remained after local minimization, so no data was sent to OpenRouter and local heuristic extraction ran instead.
+        </div>
+      )}
+
       {metadata.missing_phenoage_biomarkers.length > 0 && (
         <div className="mt-2 text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
           <strong>Missing PhenoAge Markers in Report:</strong>{" "}

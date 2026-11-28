@@ -64,20 +64,28 @@ def extract_report(
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename missing from upload")
 
-    contents = file.file.read()
+    try:
+        contents = file.file.read()
+    finally:
+        try:
+            file.file.close()
+        except Exception:
+            pass
+
     if not contents:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
-    logger.info(f"Extracting text from uploaded file: {file.filename} ({len(contents)} bytes)")
+    file_ext = Path(file.filename).suffix.lower() or "unknown"
+    logger.info("Extracting text from uploaded %s file (%d bytes)", file_ext, len(contents))
     raw_text, extract_meta = extract_text_from_file(contents, file.filename)
 
     if extract_meta.get("error") and not raw_text.strip():
         raise HTTPException(
             status_code=422,
-            detail=f"Failed to parse file {file.filename}: {extract_meta.get('error')}"
+            detail=f"Failed to parse uploaded {file_ext} file: {extract_meta.get('error')}"
         )
 
-    logger.info(f"Text extracted ({len(raw_text)} chars). Calling biomarker extraction pipeline (allow_cloud_llm={allow_cloud_llm})...")
+    logger.info("Text extracted (%d chars). Calling biomarker extraction pipeline (allow_cloud_llm=%s).", len(raw_text), allow_cloud_llm)
     extraction_result = extract_biomarkers_with_llm(raw_text, allow_cloud_llm=allow_cloud_llm)
     return extraction_result
 

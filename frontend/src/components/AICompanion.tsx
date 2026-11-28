@@ -176,7 +176,7 @@ export const AICompanion: React.FC<AICompanionProps> = ({
               </button>
             </div>
             <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
-              Educational only — not a diagnosis or treatment recommendation. Seek medical care for urgent symptoms.
+              Don&apos;t include names or contact details. Educational only — not a diagnosis or treatment recommendation. Seek medical care for urgent symptoms.
             </p>
           </form>
         </section>

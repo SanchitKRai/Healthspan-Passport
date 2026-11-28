@@ -17,7 +17,7 @@ from app.schemas.biomarker import (
     PHENOAGE_CORE_BIOMARKERS,
 )
 from app.llm.prompts import SYSTEM_PROMPT, build_extraction_prompt, build_retry_prompt
-from app.llm.redact import redact_pii
+from app.llm.redact import minimize_to_result_lines, redact_pii
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +133,8 @@ def parse_and_validate_extraction(
             if standard_id != CanonicalBiomarker.OTHER:
                 extracted_canonical_ids.add(standard_id.value)
         except Exception as e:
-            logger.warning(f"Skipping malformed biomarker item: {item}. Error: {e}")
+            std_label = item.get("standard_id", "unknown") if isinstance(item, dict) else "unknown"
+            logger.warning("Skipping malformed biomarker item (%s): %s", std_label, type(e).__name__)
 
     missing_phenoage = sorted(list(PHENOAGE_CORE_BIOMARKERS - extracted_canonical_ids))
 
@@ -181,22 +182,52 @@ HEURISTIC_PATTERNS = [
 ]
 
 
-def heuristic_extract(raw_text: str, duration_ms: int = 50) -> ExtractionResponse:
-    """Fallback rule-based extractor when no LLM API key is present."""
-    # Extract patient metadata
-    name_match = re.search(r"(?:patient\s+name|name)\s*[:|]?\s*([A-Za-z\s\.]+?)(?:\r?\n|age|gender|,)", raw_text, re.IGNORECASE)
-    age_match = re.search(r"(?:age|yrs?|years?)\s*[:|]?\s*([0-9]{1,3})", raw_text, re.IGNORECASE)
+def _extract_local_patient_info(raw_text: str) -> PatientInfo:
+    """Extract patient metadata locally so demographics never have to be sent as free text."""
+    name_match = re.search(
+        r"(?:patient\s+name|pt\.?\s*name|(?<!test\s)(?<!lab\s)(?<!assay\s)name)\s*[:|]\s*([A-Za-z][A-Za-z.\s'-]{1,45}?)(?=\r?\n|age|gender|sex|,|$)",
+        raw_text,
+        re.IGNORECASE,
+    )
+    if not name_match:
+        name_match = re.search(
+            r"\b(?:mr|mrs|ms|miss|smt|shri)\.?\s+([A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z][A-Za-z.'-]*){0,3})(?=\r?\n|,|\||age|gender|sex|s/o|d/o|$)",
+            raw_text,
+            re.IGNORECASE,
+        )
+    age_match = re.search(r"(?:age(?:\s*/\s*(?:sex|gender))?|yrs?|years?)\s*[:|]?\s*([0-9]{1,3})", raw_text, re.IGNORECASE)
     gender_match = re.search(r"\b(male|female|other)\b", raw_text, re.IGNORECASE)
-    date_match = re.search(r"(?:date|collected)\s*[:|]?\s*([0-9]{1,4}[-/.][0-9]{1,2}[-/.][0-9]{2,4}|[0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4})", raw_text, re.IGNORECASE)
-    lab_match = re.search(r"(metropolis|dr\s*lal|apollo|quest|pathlabs|diagnostics|hospital|clinic)", raw_text, re.IGNORECASE)
+    date_match = re.search(
+        r"(?:report\s*date|collected(?:\s+on)?|date)\s*[:|]?\s*([0-9]{1,4}[-/.][0-9]{1,2}[-/.][0-9]{2,4}|[0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4})",
+        raw_text,
+        re.IGNORECASE,
+    )
+    lab_match = re.search(r"(metropolis|dr\s*lal(?:\s+pathlabs)?|apollo|quest|pathlabs|diagnostics|hospital|clinic)", raw_text, re.IGNORECASE)
 
-    patient_info = PatientInfo(
+    return PatientInfo(
         name=name_match.group(1).strip() if name_match else None,
         age=float(age_match.group(1)) if age_match else None,
         gender=gender_match.group(1).lower() if gender_match else None,
         report_date=date_match.group(1) if date_match else None,
         lab_name=lab_match.group(0).title() if lab_match else None,
     )
+
+
+def _strip_inline_demographics(text: str) -> str:
+    """Strip any stray inline age/sex/gender tags from minimized biomarker lines."""
+    if not text:
+        return text
+    cleaned = re.sub(
+        r"(?i)\b(?:age(?:\s*/\s*(?:sex|gender))?|gender|sex)\s*[:|]?\s*(?:\d{1,3}\s*(?:yrs?|years?)?(?:\s*/\s*[MF])?|male|female|other)\b",
+        "[REDACTED_DEMOGRAPHIC]",
+        text,
+    )
+    return cleaned
+
+
+def heuristic_extract(raw_text: str, duration_ms: int = 50) -> ExtractionResponse:
+    """Fallback rule-based extractor when no LLM API key is present."""
+    patient_info = _extract_local_patient_info(raw_text)
 
     biomarkers = []
     extracted_canonical = set()
@@ -260,7 +291,10 @@ def heuristic_extract(raw_text: str, duration_ms: int = 50) -> ExtractionRespons
 
 
 def call_openrouter_api(model: str, prompt: str, api_key: str, timeout: float = 30.0) -> str:
-    """Call OpenRouter completions endpoint with a given model and prompt."""
+    """Call OpenRouter completions endpoint with fail-closed redaction and data-collection opt-out."""
+    # Final fail-closed PII redaction right before constructing outbound payload.
+    safe_prompt, _ = redact_pii(prompt)
+
     headers = {
         "Authorization": f"Bearer {api_key}",
         "HTTP-Referer": "https://github.com/SanchitKRai/Healthspan-Passport",
@@ -271,10 +305,12 @@ def call_openrouter_api(model: str, prompt: str, api_key: str, timeout: float = 
         "model": model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
+            {"role": "user", "content": safe_prompt},
         ],
         "temperature": 0.1,
         "response_format": {"type": "json_object"},
+        # Request no prompt/completion data collection (OpenRouter provider routing docs).
+        "provider": {"data_collection": "deny"},
     }
 
     with httpx.Client(timeout=timeout) as client:
@@ -295,9 +331,12 @@ def extract_biomarkers_with_llm(
     Main extraction pipeline:
     1. If cloud LLM consent is not granted (allow_cloud_llm=False) or no API key is set,
        run local heuristic extraction only (no outbound network call).
-    2. When consented, redact PII from raw_text BEFORE constructing prompts.
+    2. Extract structured patient metadata locally, minimize raw_text to biomarker/unit
+       result lines, and redact PII BEFORE constructing prompts (fail-closed).
+       If minimization leaves zero lines, skip OpenRouter and fall back locally.
     3. Try Primary Model (Nemotron), then Fallback Model (Kimi), with 1 JSON retry.
-    4. If all external calls fail, invoke heuristic fallback.
+    4. Merge locally extracted structured demographics onto the response and fall back
+       to the local heuristic engine if all external calls fail.
     """
     if not allow_cloud_llm:
         logger.info("Cloud LLM consent not granted (allow_cloud_llm=False). Using local heuristic extraction engine.")
@@ -313,33 +352,65 @@ def extract_biomarkers_with_llm(
         logger.info("No OPENROUTER_API_KEY set. Using local heuristic extraction engine.")
         return heuristic_extract(raw_text)
 
-    redacted_text, redaction_counts = redact_pii(raw_text)
-    if redaction_counts:
-        logger.info("Redacted PII categories before outbound OpenRouter extraction: %s", sorted(redaction_counts.keys()))
+    local_patient = _extract_local_patient_info(raw_text)
+
+    minimized_text, min_stats = minimize_to_result_lines(raw_text)
+    if not minimized_text.strip():
+        logger.info(
+            "Minimization retained 0/%s lines; skipping outbound OpenRouter call and falling back locally.",
+            min_stats.get("total_lines", 0),
+        )
+        res = heuristic_extract(raw_text)
+        res.extraction_metadata.model_used = "heuristic-rule-engine (minimized-zero-lines-local-fallback)"
+        return res
+
+    redacted_text, redaction_counts = redact_pii(minimized_text)
+    redacted_text = _strip_inline_demographics(redacted_text)
+    logger.info(
+        "Prepared outbound OpenRouter text: kept_lines=%s/%s redacted_categories=%s",
+        min_stats.get("kept_lines", 0),
+        min_stats.get("total_lines", 0),
+        sorted(redaction_counts.keys()),
+    )
 
     start_time = time.time()
     prompt = build_extraction_prompt(redacted_text)
 
+    def _merge_local_patient_fields(resp: ExtractionResponse) -> ExtractionResponse:
+        for field in ("name", "age", "gender", "report_date", "lab_name"):
+            local_val = getattr(local_patient, field)
+            if local_val is not None:
+                setattr(resp.patient_info, field, local_val)
+        return resp
+
     # 1. Try Primary Model
     for model_candidate in [primary, fallback]:
         try:
-            logger.info(f"Extracting with model: {model_candidate}")
+            logger.info("Extracting biomarkers with model: %s", model_candidate)
             raw_response = call_openrouter_api(model_candidate, prompt, api_key)
             duration_ms = int((time.time() - start_time) * 1000)
 
             # Try parsing
             try:
-                return parse_and_validate_extraction(raw_response, redacted_text, model_candidate, duration_ms)
+                parsed = parse_and_validate_extraction(raw_response, redacted_text, model_candidate, duration_ms)
+                return _merge_local_patient_fields(parsed)
             except Exception as parse_err:
-                logger.warning(f"Validation failed on {model_candidate} output: {parse_err}. Initiating 1 retry.")
-                # One retry with error feedback
-                retry_prompt = build_retry_prompt(redacted_text, str(parse_err))
+                logger.warning(
+                    "Validation failed on %s output (%s). Initiating 1 retry.",
+                    model_candidate,
+                    type(parse_err).__name__,
+                )
+                # One retry with schema error class only (never echo raw values)
+                retry_prompt = build_retry_prompt(redacted_text, type(parse_err).__name__)
                 retry_response = call_openrouter_api(model_candidate, retry_prompt, api_key)
                 duration_ms = int((time.time() - start_time) * 1000)
-                return parse_and_validate_extraction(retry_response, redacted_text, f"{model_candidate} (retry)", duration_ms)
+                parsed_retry = parse_and_validate_extraction(
+                    retry_response, redacted_text, f"{model_candidate} (retry)", duration_ms
+                )
+                return _merge_local_patient_fields(parsed_retry)
 
         except Exception as model_err:
-            logger.error(f"Error calling {model_candidate}: {model_err}")
+            logger.error("Error calling %s: %s", model_candidate, type(model_err).__name__)
             # Loop will continue to fallback model
 
     # If both models fail, use heuristic engine with warning

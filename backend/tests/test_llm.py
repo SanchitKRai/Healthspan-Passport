@@ -86,7 +86,7 @@ def test_llm_retry_on_malformed_json():
     
     with patch("app.llm.client.call_openrouter_api") as mock_api:
         mock_api.side_effect = ["NOT VALID JSON", valid_payload]
-        res = extract_biomarkers_with_llm("sample text", api_key="sk-test-key", allow_cloud_llm=True)
+        res = extract_biomarkers_with_llm("Serum Albumin: 4.5 g/dL", api_key="sk-test-key", allow_cloud_llm=True)
         assert mock_api.call_count == 2
         assert "(retry)" in res.extraction_metadata.model_used
         assert len(res.biomarkers) == 1
@@ -104,7 +104,7 @@ def test_llm_fallback_to_secondary_model():
     with patch("app.llm.client.call_openrouter_api") as mock_api:
         mock_api.side_effect = [RuntimeError("Primary model 500 error"), valid_payload]
         res = extract_biomarkers_with_llm(
-            "sample text",
+            "Fasting Glucose: 90 mg/dL",
             api_key="sk-test-key",
             primary_model="nemotron",
             fallback_model="kimi",
