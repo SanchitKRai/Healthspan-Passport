@@ -338,10 +338,12 @@ def heuristic_extract(raw_text: str, duration_ms: int = 50) -> ExtractionRespons
             if std_id == "cholesterol_total" and ("hdl" in lower_line or "ldl" in lower_line or "vldl" in lower_line):
                 continue
             aliases = BIOMARKER_ALIASES.get(std_id, ())
-            matched_alias = any(
-                re.search(rf"(?i)(?<![A-Za-z0-9]){re.escape(a).replace(r'\ ', r'\s+')}(?![A-Za-z0-9])", stripped)
-                for a in aliases
-            )
+            matched_alias = False
+            for a in aliases:
+                alias_pat = re.escape(a).replace(r"\ ", r"\s+")
+                if re.search(rf"(?i)(?<![A-Za-z0-9]){alias_pat}(?![A-Za-z0-9])", stripped):
+                    matched_alias = True
+                    break
             if matched_alias:
                 alias_hits.append((idx, std_id))
 
