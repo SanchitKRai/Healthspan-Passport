@@ -15,17 +15,19 @@ from app.schemas.biomarker import (
     BiomarkerFlag,
     ReferenceRange,
     PHENOAGE_CORE_BIOMARKERS,
+    PHYSIOLOGICAL_LIMITS,
 )
+from app.core.normalizer import BIOMARKER_ALIASES
 from app.llm.prompts import SYSTEM_PROMPT, build_extraction_prompt, build_retry_prompt
-from app.llm.redact import minimize_to_result_lines, redact_pii
+from app.llm.redact import _NON_RESULT_CONTEXT_LINE, _STANDALONE_UNIT_REGEX, minimize_to_result_lines, redact_pii
 
 logger = logging.getLogger(__name__)
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-# Primary & Fallback model slugs verified on OpenRouter
-PRIMARY_MODEL = os.getenv("OPENROUTER_PRIMARY_MODEL", "nvidia/nemotron-3.5-lightning")
-FALLBACK_MODEL = os.getenv("OPENROUTER_FALLBACK_MODEL", "moonshotai/kimi-k2")
+# Single primary OpenRouter model selected from live N=3 evaluation (falls back to local heuristic).
+PRIMARY_MODEL = os.getenv("OPENROUTER_PRIMARY_MODEL", "mistralai/mistral-small-3.2-24b-instruct")
+FALLBACK_MODEL: Optional[str] = os.getenv("OPENROUTER_FALLBACK_MODEL") or None
 
 
 def clean_json_string(text: str) -> str:
@@ -272,6 +274,168 @@ def heuristic_extract(raw_text: str, duration_ms: int = 50) -> ExtractionRespons
             except Exception as e:
                 logger.debug(f"Failed parsing matched value for {std_id}: {e}")
 
+    # Pass 2: Multi-line OCR association for markers missed by single-line regexes.
+    _OCR_RANGE_RE = re.compile(
+        r"^\s*\d+(?:\.\d+)?\s*[-–·]\s*\d+(?:\.\d+)?(?:\s*[A-Za-z/%^0-9]*)?\s*$"
+    )
+    _OCR_UNIT_COMPAT_RE = re.compile(
+        r"(?i)^\s*(?:10[\^±-]?\s*3/[uµμ]?l|103/[uµμ]?l|mg/dl|g/dl|g/l|mmol/l|umol/l|"
+        r"mg/l|iu/l|u/l|fl|pg|meq/l|cells/(?:cumm|[uµμ]l)|/(?:cumm|[uµμ]l)|%)\s*$"
+    )
+    _OCR_SCALAR_RE = re.compile(
+        r"(?i)^\s*[<>~]?\s*(\d+(?:\.\d+)?)\s*("
+        r"mg/dl|g/dl|g/l|mmol/l|umol/l|mg/l|iu/l|u/l|fl|pg|meq/l|"
+        r"10[\^±-]?\s*3/[uµμ]?l|103/[uµμ]?l|cells/(?:cumm|[uµμ]l)|/(?:cumm|[uµμ]l)|%"
+        r")?\s*$"
+    )
+    _UNIT_FAMILY = {
+        "albumin": {"g/dl", "g/l"},
+        "creatinine": {"mg/dl", "umol/l"},
+        "glucose_fasting": {"mg/dl", "mmol/l"},
+        "crp": {"mg/l", "mg/dl"},
+        "lymphocyte_pct": {"%"},
+        "mcv": {"fl"},
+        "rdw": {"%"},
+        "alp": {"u/l", "iu/l"},
+        "wbc": {"10^3/ul", "10^9/l", "103/ul", "10±3/ul", "10-3/ul", "cells/cumm", "/cumm"},
+        "hemoglobin": {"g/dl"},
+        "platelets": {"10^3/ul", "103/ul", "10±3/ul", "10-3/ul", "cells/cumm", "/cumm", "lakh/cumm"},
+        "hba1c": {"%"},
+        "cholesterol_total": {"mg/dl"},
+        "cholesterol_hdl": {"mg/dl"},
+        "cholesterol_ldl": {"mg/dl"},
+        "triglycerides": {"mg/dl"},
+        "bilirubin_total": {"mg/dl"},
+        "ast_sgot": {"u/l", "iu/l"},
+        "alt_sgpt": {"u/l", "iu/l"},
+        "bun": {"mg/dl"},
+        "uric_acid": {"mg/dl"},
+    }
+
+    spec_by_id = {s[0]: s for s in HEURISTIC_PATTERNS}
+    line_units: Dict[int, str] = {}
+    line_scalars: Dict[int, Tuple[float, Optional[str]]] = {}
+    alias_hits: list[Tuple[int, str]] = []
+
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or _NON_RESULT_CONTEXT_LINE.search(stripped):
+            continue
+        if _STANDALONE_UNIT_REGEX.match(stripped) or _OCR_UNIT_COMPAT_RE.match(stripped):
+            line_units[idx] = stripped.lower().replace(" ", "")
+            continue
+        if _OCR_RANGE_RE.match(stripped):
+            continue
+        sm = _OCR_SCALAR_RE.match(stripped)
+        if sm:
+            line_scalars[idx] = (float(sm.group(1)), sm.group(2).lower() if sm.group(2) else None)
+
+        lower_line = stripped.lower()
+        for std_id in spec_by_id:
+            if std_id in extracted_canonical:
+                continue
+            # Avoid matching cholesterol_total on HDL/LDL lines
+            if std_id == "cholesterol_total" and ("hdl" in lower_line or "ldl" in lower_line or "vldl" in lower_line):
+                continue
+            aliases = BIOMARKER_ALIASES.get(std_id, ())
+            matched_alias = any(
+                re.search(rf"(?i)(?<![A-Za-z0-9]){re.escape(a).replace(r'\ ', r'\s+')}(?![A-Za-z0-9])", stripped)
+                for a in aliases
+            )
+            if matched_alias:
+                alias_hits.append((idx, std_id))
+
+    claimed_scalar_lines = set()
+    pending = list(alias_hits)
+
+    def _plausible_candidates(alias_idx: int, std_id: str) -> list[Tuple[int, int, float, bool]]:
+        canon = CanonicalBiomarker(std_id)
+        low_lim, high_lim = PHYSIOLOGICAL_LIMITS.get(canon, (0.0, 1e9))
+        expected_units = _UNIT_FAMILY.get(std_id, set())
+        out = []
+        for cand_idx in range(max(0, alias_idx - 2), min(len(lines), alias_idx + 3)):
+            if cand_idx in claimed_scalar_lines or cand_idx not in line_scalars:
+                continue
+            raw_val, inline_unit = line_scalars[cand_idx]
+            val = raw_val / 1000.0 if (std_id in ("wbc", "platelets") and raw_val > 1500) else raw_val
+            if val < low_lim or val > high_lim:
+                continue
+            nearby_unit = inline_unit or line_units.get(cand_idx + 1) or line_units.get(cand_idx - 1) or line_units.get(alias_idx + 1)
+            unit_match = bool(nearby_unit and any(u in nearby_unit for u in expected_units))
+            # Reject explicit contradictory unit right next to the candidate
+            if inline_unit and expected_units and not any(u in inline_unit for u in expected_units):
+                continue
+            dist = abs(cand_idx - alias_idx)
+            # Score: higher is better (unit match + closer distance + post-alias preference)
+            score = (10 if unit_match else 0) + (5 - dist) * 2 + (1 if cand_idx > alias_idx else 0)
+            out.append((score, cand_idx, val, unit_match))
+        out.sort(key=lambda t: (-t[0], t[1]))
+        return out
+
+    # Iterative assignment: resolve unique 1-candidate aliases before scored ones; never guess ties.
+    for pass_num in range(2):
+        next_pending = []
+        for alias_idx, std_id in pending:
+            if std_id in extracted_canonical:
+                continue
+            cands = _plausible_candidates(alias_idx, std_id)
+            if not cands:
+                continue
+            if pass_num == 0 and len(cands) > 1:
+                next_pending.append((alias_idx, std_id))
+                continue
+
+            _, disp_name, _, unit, std_unit, (ref_low, ref_high) = spec_by_id[std_id]
+            top_score = cands[0][0]
+            tied_top = [c for c in cands if c[0] == top_score]
+
+            if len(tied_top) > 1:
+                # Ambiguous tie: mark needs_review and never guess the numeric value.
+                item = BiomarkerItem(
+                    standard_id=CanonicalBiomarker(std_id),
+                    display_name=disp_name,
+                    raw_name=lines[alias_idx].strip()[:60],
+                    value=None,
+                    unit=unit,
+                    standard_unit=std_unit,
+                    reference_range=ReferenceRange(low=ref_low, high=ref_high, text=f"{ref_low} - {ref_high} {unit}"),
+                    confidence=0.0,
+                    flag=BiomarkerFlag.UNKNOWN,
+                    needs_review=True,
+                    source_text=lines[alias_idx].strip(),
+                )
+                biomarkers.append(item)
+                extracted_canonical.add(std_id)
+                low_confidence_count += 1
+                continue
+
+            _, chosen_idx, val, unit_match = cands[0]
+            claimed_scalar_lines.add(chosen_idx)
+            flag = BiomarkerFlag.NORMAL
+            if ref_low is not None and val < ref_low:
+                flag = BiomarkerFlag.LOW
+            elif ref_high is not None and val > ref_high:
+                flag = BiomarkerFlag.HIGH
+
+            conf = 0.74 if (len(cands) == 1 and unit_match) else 0.65
+            item = BiomarkerItem(
+                standard_id=CanonicalBiomarker(std_id),
+                display_name=disp_name,
+                raw_name=lines[alias_idx].strip()[:60],
+                value=val,
+                unit=unit,
+                standard_unit=std_unit,
+                reference_range=ReferenceRange(low=ref_low, high=ref_high, text=f"{ref_low} - {ref_high} {unit}"),
+                confidence=conf,
+                flag=flag,
+                needs_review=True,
+                source_text=f"{lines[alias_idx].strip()} -> {lines[chosen_idx].strip()}",
+            )
+            biomarkers.append(item)
+            extracted_canonical.add(std_id)
+            low_confidence_count += 1
+        pending = next_pending
+
     missing_phenoage = sorted(list(PHENOAGE_CORE_BIOMARKERS - extracted_canonical))
 
     meta = ExtractionMetadata(
@@ -307,9 +471,8 @@ def call_openrouter_api(model: str, prompt: str, api_key: str, timeout: float = 
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": safe_prompt},
         ],
-        "temperature": 0.1,
-        # Allow headroom for reasoning models (e.g. nemotron-3.5-lightning) without reserving 131K window.
-        "max_tokens": 4096,
+        "temperature": 0.0,
+        "max_tokens": 2000,
         # Request no prompt/completion data collection (OpenRouter provider routing docs).
         "provider": {"data_collection": "deny"},
     }
@@ -365,9 +528,10 @@ def extract_biomarkers_with_llm(
     2. Extract structured patient metadata locally, minimize raw_text to biomarker/unit
        result lines, and redact PII BEFORE constructing prompts (fail-closed).
        If minimization leaves zero lines, skip OpenRouter and fall back locally.
-    3. Try Primary Model (Nemotron), then Fallback Model (Kimi), with 1 JSON retry.
+    3. Try Primary Model (mistralai/mistral-small-3.2-24b-instruct) with 1 JSON retry
+       (or an explicit env override / fallback_model if configured).
     4. Merge locally extracted structured demographics onto the response and fall back
-       to the local heuristic engine if all external calls fail.
+       to the local heuristic engine if the cloud call fails.
     """
     if not allow_cloud_llm:
         logger.info("Cloud LLM consent not granted (allow_cloud_llm=False). Using local heuristic extraction engine.")
@@ -377,7 +541,7 @@ def extract_biomarkers_with_llm(
 
     api_key = api_key or os.getenv("OPENROUTER_API_KEY")
     primary = primary_model or os.getenv("OPENROUTER_PRIMARY_MODEL", PRIMARY_MODEL)
-    fallback = fallback_model or os.getenv("OPENROUTER_FALLBACK_MODEL", FALLBACK_MODEL)
+    fallback = fallback_model if fallback_model is not None else FALLBACK_MODEL
 
     if not api_key:
         logger.info("No OPENROUTER_API_KEY set. Using local heuristic extraction engine.")
@@ -412,8 +576,8 @@ def extract_biomarkers_with_llm(
                 setattr(resp.patient_info, field, local_val)
         return resp
 
-    # 1. Try Primary Model
-    for model_candidate in [primary, fallback]:
+    # 1. Try Primary Model (plus optional explicit fallback override if supplied)
+    for model_candidate in [m for m in (primary, fallback) if m]:
         try:
             logger.info("Extracting biomarkers with model: %s", model_candidate)
             raw_response = call_openrouter_api(model_candidate, prompt, api_key)

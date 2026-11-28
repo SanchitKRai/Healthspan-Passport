@@ -17,7 +17,7 @@ from app.schemas.biomarker import (
     ExplanationResponse,
     ClinicalExportRequest,
 )
-from app.extraction.extractor import extract_text_from_file
+from app.extraction.extractor import MAX_UPLOAD_BYTES, extract_text_from_file
 from app.llm.client import extract_biomarkers_with_llm, prepare_outbound_extraction_text
 from app.llm.chat import ChatRequest, ChatResponse, answer_health_question
 from app.core.normalizer import normalize_biomarker
@@ -74,7 +74,7 @@ def _extract_upload_raw_text(file: UploadFile) -> str:
         raise HTTPException(status_code=400, detail="Filename missing from upload")
 
     try:
-        contents = file.file.read()
+        contents = file.file.read(MAX_UPLOAD_BYTES + 1)
     finally:
         try:
             file.file.close()
@@ -83,6 +83,8 @@ def _extract_upload_raw_text(file: UploadFile) -> str:
 
     if not contents:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    if len(contents) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Uploaded file exceeds the 8 MB size limit.")
 
     file_ext = Path(file.filename).suffix.lower() or "unknown"
     logger.info("Extracting text from uploaded %s file (%d bytes)", file_ext, len(contents))
@@ -214,7 +216,9 @@ def analyze_biomarkers(req: AnalysisRequest) -> AnalysisResponse:
                 bounding_box=b.bounding_box,
             )
             normalized_list.append(norm_item)
-            pheno_inputs[b.standard_id.value] = norm_val
+            # PhenoAge must never be computed from unconfirmed / needs_review values.
+            if not b.needs_review and b.confidence >= 0.8:
+                pheno_inputs[b.standard_id.value] = norm_val
             risk_inputs[b.standard_id.value] = b.value
             if b.standard_id.value == "glucose_fasting":
                 risk_inputs["glucose"] = b.value

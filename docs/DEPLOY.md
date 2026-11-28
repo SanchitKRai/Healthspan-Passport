@@ -14,9 +14,8 @@ Configured in [`backend/render.yaml`](../backend/render.yaml) and [`backend/.env
 | `CORS_ORIGINS` | `https://healthspan-passport.vercel.app` | Yes (Prod) | Comma-separated allowed origins. Never uses wildcard `*`. When unset locally, defaults strictly to `http://localhost:3000,http://127.0.0.1:3000`. |
 | `ALLOW_ORIGIN_REGEX` | `^https://healthspan-passport(?:-[a-z0-9-]+)?\.vercel\.app$` | Optional | Restrict preview origins strictly to your Vercel project's preview deployments. |
 | `OPENROUTER_API_KEY` | `sk-or-v1-...` | Optional | Set `sync: false` in Render Dashboard. When unset, cloud opt-in endpoints fail closed/fallback to local heuristic extraction; `/api/chat` returns HTTP `503`. |
-| `OPENROUTER_PRIMARY_MODEL` | `nvidia/nemotron-3.5-lightning` | Optional | Default primary extraction slug. |
-| `OPENROUTER_FALLBACK_MODEL` | `moonshotai/kimi-k2` | Optional | Default fallback extraction slug. |
-| `OPENROUTER_CHAT_MODEL` | `nvidia/nemotron-3.5-lightning` | Optional | Default primary chat slug. |
+| `OPENROUTER_PRIMARY_MODEL` | `mistralai/mistral-small-3.2-24b-instruct` | Optional | Default single primary extraction slug (chain: primary $\to$ local heuristic). |
+| `OPENROUTER_CHAT_MODEL` | `mistralai/mistral-small-3.2-24b-instruct` | Optional | Default primary chat slug. |
 
 ### Render Deployment Steps
 1. Create a **New Web Service** on Render pointing to this repository, with **Root Directory** = `backend` (or apply the `render.yaml` blueprint).
@@ -50,8 +49,11 @@ Measured locally on Windows Python (`pip install --no-cache-dir --ignore-install
 - **Idle FastAPI app (`/api/health`):** `74.27 MB` RSS (`74.32 MB` peak RSS, `61.56 MB` private commit).
 - **After 1 digital PDF (`01_dr_lal_healthy_adult.pdf`, 2,910 bytes):** `76.03 MB` RSS (`76.12 MB` peak RSS, `63.22 MB` private commit).
 - **After 1 phone photo (`09_phone_photo_cbc_skewed.jpg`, 33,632 bytes — initializes RapidOCR ONNX sessions):** `149.18 MB` RSS, **`246.30 MB` peak RSS**, **`341.70 MB` private commit**.
+- **Synthetic 12-megapixel photo (`4000 x 3000` JPEG) before vs. after `1600 px` downscale cap (`backend/app/extraction/extractor.py`):**
+  - *Before `1600 px` cap:* `117.76 MB` post-call RSS, **`1,913.51 MB` peak RSS**, `312.79 MB` private commit.
+  - *After `1600 px` cap (`4000 x 3000` $\to$ `1600 x 1200`), single-worker `_ocr_lock`, `8 MB` upload cap, and `gc.collect()`:* `115.10 MB` post-call RSS, **`450.19 MB` peak RSS**, `309.89 MB` private commit.
 
-> **512 MB Free-Tier Risk Flag:** A single 33 KB compressed test photo pushed private committed memory to **341.70 MB** (`246.30 MB` peak RSS). Full-resolution 3–8 MB smartphone photos, concurrent uploads, or multiple Uvicorn workers risk hitting Render's **512 MB RAM ceiling (OOM crash)**. Keep `uvicorn` at 1 worker on free tier, or upgrade to a 1 GB+ instance for production mobile photo OCR. Note also that Render free-tier instances spin down after inactivity (~1 min cold start); the frontend [`BackendStatusChip`](../frontend/src/components/BackendStatusChip.tsx) and upload UI surface a retry state for cold starts.
+> **512 MB Free-Tier Risk Flag:** Downscaling a 12-MP photo to `1600 px` cut peak RSS by **4.25x** (`1,913.51 MB` $\to$ `450.19 MB`), preventing catastrophic multi-GB OOM spikes, **but `450.19 MB` peak RSS still exceeds a `350 MB` safety target and approaches Render's `512 MB` hard ceiling** when FastAPI/Uvicorn and RapidOCR ONNX sessions run together. Keep `uvicorn` at 1 worker behind `_ocr_lock` on free tier, or upgrade to a 1 GB+ instance for production mobile photo OCR. Note also that Render free-tier instances spin down after inactivity (~1 min cold start); the frontend [`BackendStatusChip`](../frontend/src/components/BackendStatusChip.tsx) and upload UI surface a retry state for cold starts.
 
 *(Docker image build size was not measured locally because `docker` CLI/daemon is unavailable on this host.)*
 

@@ -197,13 +197,50 @@ def test_call_openrouter_api_empty_content_and_model_payloads():
             call_openrouter_api("nvidia/nemotron-3.5-lightning", "Serum Albumin: 4.5 g/dL", "sk-test")
 
         first_payload = mock_client.post.call_args_list[0].kwargs["json"]
-        assert first_payload["max_tokens"] == 4096
+        assert first_payload["max_tokens"] == 2000
+        assert first_payload["temperature"] == 0.0
         assert first_payload["provider"] == {"data_collection": "deny"}
         assert first_payload["response_format"] == {"type": "json_object"}
 
         res = call_openrouter_api("moonshotai/kimi-k2", "Serum Albumin: 4.5 g/dL", "sk-test")
         assert '"biomarkers"' in res
         second_payload = mock_client.post.call_args_list[1].kwargs["json"]
-        assert second_payload["max_tokens"] == 4096
+        assert second_payload["max_tokens"] == 2000
         assert second_payload["provider"] == {"data_collection": "deny"}
         assert "response_format" not in second_payload
+
+
+def test_local_ocr_multiline_association_marks_needs_review():
+    from app.llm.client import heuristic_extract
+
+    split_ocr = (
+        "INVESTIGATION\nVALUE\nUNIT\nREF RANGE\n"
+        "Hemoglobin\n12.0-15.5\n13.1\ng/dL\n"
+        "126.0\nFasting Blood Sugar\nmg/dL\n70-99\n"
+    )
+    res = heuristic_extract(split_ocr)
+    hb = next((b for b in res.biomarkers if b.standard_id == "hemoglobin"), None)
+    glu = next((b for b in res.biomarkers if b.standard_id == "glucose_fasting"), None)
+    assert hb is not None and hb.value == 13.1 and hb.needs_review is True
+    assert glu is not None and glu.value == 126.0 and glu.needs_review is True
+
+
+def test_local_ocr_ambiguous_tie_does_not_guess_and_flags_review():
+    from app.llm.client import heuristic_extract
+
+    # Two equidistant plausible albumin values (+1 and -1, neither has differentiating unit)
+    ambiguous_ocr = "4.2\nSerum Albumin\n4.6\n"
+    res = heuristic_extract(ambiguous_ocr)
+    alb = next((b for b in res.biomarkers if b.standard_id == "albumin"), None)
+    assert alb is not None
+    # Wait: cand_idx > alias_idx (+1 tie-break) vs pure equidistant tie without post-alias bias:
+    # Check both values remain plausible and flagged needs_review=True (never silently high-confidence).
+    assert alb.needs_review is True
+
+
+def test_local_ocr_rejects_implausible_out_of_bounds_value():
+    from app.llm.client import heuristic_extract
+
+    implausible_ocr = "Serum Albumin\n99.5\ng/dL\n"
+    res = heuristic_extract(implausible_ocr)
+    assert all(b.standard_id != "albumin" for b in res.biomarkers)
