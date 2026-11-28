@@ -17,11 +17,12 @@ export const BackendStatusChip: React.FC = () => {
     }
 
     setStatus("checking");
-    setDetail("Checking backend...");
+    setDetail("Checking / waking backend...");
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      // Match the ~1 min free-tier Render cold start instead of aborting prematurely at 8s.
+      const timeoutId = setTimeout(() => controller.abort(), 65000);
       const res = await fetch(`${API_BASE_URL}/api/health`, {
         method: "GET",
         signal: controller.signal,
@@ -31,7 +32,7 @@ export const BackendStatusChip: React.FC = () => {
 
       if (!res.ok) {
         setStatus("unreachable");
-        setDetail(BACKEND_UNREACHABLE_MESSAGE);
+        setDetail(`${BACKEND_UNREACHABLE_MESSAGE} (${API_BASE_URL})`);
         return;
       }
 
@@ -39,7 +40,7 @@ export const BackendStatusChip: React.FC = () => {
       setDetail("Backend ready");
     } catch {
       setStatus("unreachable");
-      setDetail(BACKEND_UNREACHABLE_MESSAGE);
+      setDetail(`${BACKEND_UNREACHABLE_MESSAGE} (${API_BASE_URL})`);
     }
   }, []);
 
