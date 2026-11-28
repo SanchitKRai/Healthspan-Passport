@@ -11,8 +11,8 @@ Configured in [`backend/render.yaml`](../backend/render.yaml) and [`backend/.env
 | Variable | Value / Example | Required | Notes |
 | :--- | :--- | :--- | :--- |
 | `PYTHON_VERSION` | `3.11.9` | Yes | Matches `backend/Dockerfile` (`python:3.11-slim`). |
-| `CORS_ORIGINS` | `https://healthspan-passport.vercel.app` | Yes (Prod) | Comma-separated allowed origins. Never uses wildcard `*`. When unset locally, defaults strictly to `http://localhost:3000,http://127.0.0.1:3000`. |
-| `ALLOW_ORIGIN_REGEX` | `^https://healthspan-passport(?:-[a-z0-9-]+)?\.vercel\.app$` | Optional | Restrict preview origins strictly to your Vercel project's preview deployments. |
+| `CORS_ORIGINS` | `https://frontend-tau-murex-6pqd8vtg90.vercel.app` | Yes (Prod) | Comma-separated allowed origins. Never uses wildcard `*`. When unset locally, defaults strictly to `http://localhost:3000,http://127.0.0.1:3000`. |
+| `ALLOW_ORIGIN_REGEX` | `^https://frontend-[a-z0-9-]+\.vercel\.app$` | Optional | Restrict preview origins strictly to your Vercel project's preview deployments. |
 | `OPENROUTER_API_KEY` | `sk-or-v1-...` | Optional | Set `sync: false` in Render Dashboard. When unset, cloud opt-in endpoints fail closed/fallback to local heuristic extraction; `/api/chat` returns HTTP `503`. |
 | `OPENROUTER_PRIMARY_MODEL` | `mistralai/mistral-small-3.2-24b-instruct` | Optional | Default single primary extraction slug (chain: primary $\to$ local heuristic). |
 | `OPENROUTER_CHAT_MODEL` | `mistralai/mistral-small-3.2-24b-instruct` | Optional | Default primary chat slug. |
