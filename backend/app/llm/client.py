@@ -308,16 +308,22 @@ def call_openrouter_api(model: str, prompt: str, api_key: str, timeout: float = 
             {"role": "user", "content": safe_prompt},
         ],
         "temperature": 0.1,
-        "response_format": {"type": "json_object"},
+        # Allow headroom for reasoning models (e.g. nemotron-3.5-lightning) without reserving 131K window.
+        "max_tokens": 4096,
         # Request no prompt/completion data collection (OpenRouter provider routing docs).
         "provider": {"data_collection": "deny"},
     }
+    if "kimi-k2" not in model.lower():
+        payload["response_format"] = {"type": "json_object"}
 
     with httpx.Client(timeout=timeout) as client:
         resp = client.post(OPENROUTER_API_URL, headers=headers, json=payload)
         resp.raise_for_status()
         res_json = resp.json()
-        return res_json["choices"][0]["message"]["content"]
+        content = (res_json.get("choices") or [{}])[0].get("message", {}).get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError(f"OpenRouter returned empty content for {model}")
+        return content
 
 
 def prepare_outbound_extraction_text(raw_text: str) -> Tuple[str, Dict[str, Any]]:

@@ -44,12 +44,27 @@ Raw data committed in [`data/benchmark_metrics.json`](../data/benchmark_metrics.
 
 ---
 
+## 2b. Cloud-Path Early Check (`N=3`, Synthetic Reports, `data_collection="deny"`)
+
+Committed output: [`data/results/cloud_path_check.json`](../data/results/cloud_path_check.json) via [`backend/scripts/check_cloud_path.py`](../backend/scripts/check_cloud_path.py).
+
+- **Model Slug Availability (`GET https://openrouter.ai/api/v1/models`):** Confirmed both `nvidia/nemotron-3.5-lightning` and `moonshotai/kimi-k2` exist on OpenRouter.
+- **Measured Cloud Extraction (`N=3, synthetic reports, early check`, `provider: {"data_collection": "deny"}`):**
+  - Tested on `01_dr_lal_healthy_adult.pdf` (10 expected), `09_phone_photo_cbc_skewed.jpg` (6 expected), and `10_phone_photo_metabolic_shadow.jpg` (4 expected).
+  - **`provider: {"data_collection": "deny"}` routed without rejection**, but **cloud LLM completion rate was `0/3` (`valid_json_returned: false`; cloud extraction accuracy: not measured)**:
+    - `nvidia/nemotron-3.5-lightning`: returned empty `message.content` with `finish_reason="length"` at `max_tokens=4096` (reasoning tokens exhausted the completion budget; before adding `"max_tokens"`, omitting it caused OpenRouter to reserve the 131,072-token window and reject with `HTTP 402` credits exceeded).
+    - `moonshotai/kimi-k2`: does not support `structured_outputs` / `response_format` per `/api/v1/models` (returned Novita `HTTP 400: model: moonshotai/kimi-k2-instruct does not support feature: structured-outputs` when `response_format` was sent); with `response_format` omitted and `max_tokens=4096`, returned `HTTP 402` (API key remaining credit allowance was `1,584–1,880` tokens vs. `4,096` requested).
+  - **Fail-closed fallback outcome:** The pipeline fell back safely to `heuristic-rule-engine (api-fallback)`, extracting `10/10` (`100.0%`) on `01_dr_lal_healthy_adult.pdf` and `0/10` (`0.0%`) on the two phone photos (`10/20 = 50.0%` overall from local fallback).
+  - **Candidate non-reasoning `structured_outputs` slugs verified in `/api/v1/models`:** `mistralai/mistral-small-3.2-24b-instruct`, `openai/gpt-4o-mini`, `qwen/qwen-2.5-72b-instruct`.
+
+---
+
 ## 3. Safety, Human-in-the-Loop & Failure Mode Analysis
 
 1. **Unflagged Error Protection:**
    Values parsed below 80% confidence or outside `PHYSIOLOGICAL_LIMITS` are marked `needs_review: true`, requiring user confirmation in the UI before PhenoAge is computed. Even in offline mode, `02_metropolis_prediabetic.pdf` produced 1 unflagged mismatch, underscoring why human confirmation remains mandatory.
 2. **Offline vs. LLM Extraction:**
-   The metrics above reflect **offline heuristic mode** (`HEURISTIC_PATTERNS` + `RapidOCR`). Phone camera photos achieve **0.0%** offline under regex matching. Configured OpenRouter slugs in `backend/app/llm/client.py` are `nvidia/nemotron-3.5-lightning` (primary) and `moonshotai/kimi-k2` (fallback), which have not yet been benchmarked live in this repo.
+   The metrics in Sections 1–2 reflect **offline heuristic mode** (`HEURISTIC_PATTERNS` + `RapidOCR`). Phone camera photos achieve **0.0%** offline under regex matching. Section 2b documents the `N=3` early OpenRouter check (`0/3` cloud completions due to Nemotron reasoning token truncation and Kimi K2 credit/feature limits; cloud accuracy remains **not measured**).
 3. **Missing Biomarker Integrity:**
    When essential tests (such as hs-CRP) are absent, the PhenoAge engine returns `phenoage: null` and lists the missing markers rather than imputing them.
 
