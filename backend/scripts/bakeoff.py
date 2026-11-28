@@ -25,8 +25,8 @@ REPRESENTATIVE_REPORTS = [
 ]
 
 MODELS_TO_COMPARE = [
-    {"name": "Nemotron (Primary)", "slug": os.getenv("OPENROUTER_PRIMARY_MODEL", "nvidia/nemotron-3.5-lightning")},
-    {"name": "Kimi (Fallback)", "slug": os.getenv("OPENROUTER_FALLBACK_MODEL", "moonshotai/kimi-k2")},
+    {"name": "Mistral Small 3.2 24B (Primary)", "slug": os.getenv("OPENROUTER_PRIMARY_MODEL", "mistralai/mistral-small-3.2-24b-instruct")},
+    {"name": "GPT-4o-mini (Comparator)", "slug": os.getenv("OPENROUTER_FALLBACK_MODEL", "openai/gpt-4o-mini")},
 ]
 
 

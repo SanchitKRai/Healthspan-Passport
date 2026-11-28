@@ -46,3 +46,33 @@ def test_corrupt_file_handling():
     text, meta = extract_text_from_file(b"not a valid pdf or image", "broken.pdf")
     assert meta["error"] is not None
     assert text == ""
+
+
+def test_large_image_downscaled_to_max_1600px():
+    from app.extraction.extractor import MAX_OCR_IMAGE_DIM, extract_text_from_file
+
+    img = Image.new("RGB", (3200, 1600), color=(255, 255, 255))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+
+    _, meta = extract_text_from_file(buf.getvalue(), "wide_report.jpg")
+    assert meta["width"] == 3200
+    assert meta["height"] == 1600
+    assert max(meta["processed_width"], meta["processed_height"]) == MAX_OCR_IMAGE_DIM
+    assert meta["processed_width"] == 1600
+    assert meta["processed_height"] == 800
+
+
+def test_upload_exceeding_8mb_cap_is_rejected():
+    from fastapi.testclient import TestClient
+    from app.extraction.extractor import MAX_UPLOAD_BYTES, extract_text_from_file
+    from app.main import app
+
+    oversized = b"0" * (MAX_UPLOAD_BYTES + 10)
+    text, meta = extract_text_from_file(oversized, "huge.jpg")
+    assert text == ""
+    assert "8 MB" in meta["error"]
+
+    client = TestClient(app)
+    resp = client.post("/api/extract", files={"file": ("huge.jpg", io.BytesIO(oversized), "image/jpeg")})
+    assert resp.status_code == 413

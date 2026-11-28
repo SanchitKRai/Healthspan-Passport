@@ -1,14 +1,14 @@
 {
-  "benchmark_timestamp": "2026-11-21 18:11:19",
+  "benchmark_timestamp": "2026-11-28 21:31:57",
   "total_reports": 15,
   "total_expected_biomarkers": 116,
-  "total_extracted_biomarkers": 75,
-  "total_matched_biomarkers": 74,
-  "overall_field_accuracy_pct": 63.8,
+  "total_extracted_biomarkers": 107,
+  "total_matched_biomarkers": 106,
+  "overall_field_accuracy_pct": 91.4,
   "digital_pdf_accuracy_pct": 88.1,
-  "phone_photo_accuracy_pct": 0.0,
-  "needs_review_flag_rate_pct": 0.0,
-  "unflagged_error_rate_pct": 1.33,
+  "phone_photo_accuracy_pct": 100.0,
+  "needs_review_flag_rate_pct": 29.9,
+  "unflagged_error_rate_pct": 0.93,
   "per_report": [
     {
       "filename": "01_dr_lal_healthy_adult.pdf",
@@ -19,7 +19,7 @@
       "accuracy_pct": 100.0,
       "flagged_needs_review": 0,
       "unflagged_errors": 0,
-      "latency_ms": 39
+      "latency_ms": 66
     },
     {
       "filename": "02_metropolis_prediabetic.pdf",
@@ -30,7 +30,7 @@
       "accuracy_pct": 91.7,
       "flagged_needs_review": 0,
       "unflagged_errors": 1,
-      "latency_ms": 29
+      "latency_ms": 35
     },
     {
       "filename": "03_apollo_anemia_female.pdf",
@@ -41,7 +41,7 @@
       "accuracy_pct": 90.0,
       "flagged_needs_review": 0,
       "unflagged_errors": 0,
-      "latency_ms": 24
+      "latency_ms": 34
     },
     {
       "filename": "04_srl_renal_risk.pdf",
@@ -52,7 +52,7 @@
       "accuracy_pct": 90.9,
       "flagged_needs_review": 0,
       "unflagged_errors": 0,
-      "latency_ms": 25
+      "latency_ms": 36
     },
     {
       "filename": "05_max_liver_inflammation.pdf",
@@ -63,7 +63,7 @@
       "accuracy_pct": 91.7,
       "flagged_needs_review": 0,
       "unflagged_errors": 0,
-      "latency_ms": 28
+      "latency_ms": 55
     },
     {
       "filename": "06_quest_missing_crp.pdf",
@@ -74,7 +74,7 @@
       "accuracy_pct": 70.0,
       "flagged_needs_review": 0,
       "unflagged_errors": 0,
-      "latency_ms": 25
+      "latency_ms": 39
     },
     {
       "filename": "07_suburban_geriatric.pdf",
@@ -85,7 +85,7 @@
       "accuracy_pct": 88.9,
       "flagged_needs_review": 0,
       "unflagged_errors": 0,
-      "latency_ms": 24
+      "latency_ms": 29
     },
     {
       "filename": "08_medall_young_athlete.pdf",
@@ -96,84 +96,84 @@
       "accuracy_pct": 80.0,
       "flagged_needs_review": 0,
       "unflagged_errors": 0,
-      "latency_ms": 22
+      "latency_ms": 31
     },
     {
       "filename": "09_phone_photo_cbc_skewed.jpg",
       "format": "Phone Capture (Skewed/Shadow)",
       "expected_fields": 6,
-      "extracted_fields": 0,
-      "matched_fields": 0,
-      "accuracy_pct": 0.0,
-      "flagged_needs_review": 0,
+      "extracted_fields": 6,
+      "matched_fields": 6,
+      "accuracy_pct": 100.0,
+      "flagged_needs_review": 6,
       "unflagged_errors": 0,
-      "latency_ms": 2082
+      "latency_ms": 2428
     },
     {
       "filename": "10_phone_photo_metabolic_shadow.jpg",
       "format": "Phone Capture (Skewed/Shadow)",
       "expected_fields": 4,
-      "extracted_fields": 0,
-      "matched_fields": 0,
-      "accuracy_pct": 0.0,
-      "flagged_needs_review": 0,
+      "extracted_fields": 4,
+      "matched_fields": 4,
+      "accuracy_pct": 100.0,
+      "flagged_needs_review": 4,
       "unflagged_errors": 0,
-      "latency_ms": 2937
+      "latency_ms": 1862
     },
     {
       "filename": "11_phone_photo_lipid_creased.jpg",
       "format": "Phone Capture (Skewed/Shadow)",
       "expected_fields": 4,
-      "extracted_fields": 0,
-      "matched_fields": 0,
-      "accuracy_pct": 0.0,
-      "flagged_needs_review": 0,
+      "extracted_fields": 4,
+      "matched_fields": 4,
+      "accuracy_pct": 100.0,
+      "flagged_needs_review": 4,
       "unflagged_errors": 0,
-      "latency_ms": 2960
+      "latency_ms": 2566
     },
     {
       "filename": "12_phone_photo_liver_angle.jpg",
       "format": "Phone Capture (Skewed/Shadow)",
       "expected_fields": 5,
-      "extracted_fields": 0,
-      "matched_fields": 0,
-      "accuracy_pct": 0.0,
-      "flagged_needs_review": 0,
+      "extracted_fields": 5,
+      "matched_fields": 5,
+      "accuracy_pct": 100.0,
+      "flagged_needs_review": 5,
       "unflagged_errors": 0,
-      "latency_ms": 2992
+      "latency_ms": 2563
     },
     {
       "filename": "13_phone_photo_diabetes_panel.jpg",
       "format": "Phone Capture (Skewed/Shadow)",
       "expected_fields": 3,
-      "extracted_fields": 0,
-      "matched_fields": 0,
-      "accuracy_pct": 0.0,
-      "flagged_needs_review": 0,
+      "extracted_fields": 3,
+      "matched_fields": 3,
+      "accuracy_pct": 100.0,
+      "flagged_needs_review": 3,
       "unflagged_errors": 0,
-      "latency_ms": 2371
+      "latency_ms": 1754
     },
     {
       "filename": "14_phone_photo_routine_health_check.jpg",
       "format": "Phone Capture (Skewed/Shadow)",
       "expected_fields": 6,
-      "extracted_fields": 0,
-      "matched_fields": 0,
-      "accuracy_pct": 0.0,
-      "flagged_needs_review": 0,
+      "extracted_fields": 6,
+      "matched_fields": 6,
+      "accuracy_pct": 100.0,
+      "flagged_needs_review": 6,
       "unflagged_errors": 0,
-      "latency_ms": 4009
+      "latency_ms": 2238
     },
     {
       "filename": "15_phone_photo_low_contrast.jpg",
       "format": "Phone Capture (Skewed/Shadow)",
       "expected_fields": 4,
-      "extracted_fields": 0,
-      "matched_fields": 0,
-      "accuracy_pct": 0.0,
-      "flagged_needs_review": 0,
+      "extracted_fields": 4,
+      "matched_fields": 4,
+      "accuracy_pct": 100.0,
+      "flagged_needs_review": 4,
       "unflagged_errors": 0,
-      "latency_ms": 1865
+      "latency_ms": 2200
     }
   ]
 }

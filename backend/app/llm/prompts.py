@@ -7,11 +7,12 @@ Your job is to accurately extract structured biomarker data from raw medical lab
 RULES:
 1. Strict Fidelity: Extract ONLY what is explicitly present in the report. NEVER guess, interpolate, or invent missing values.
 2. Canonical Mapping: Map laboratory test names to the canonical standard_id from the approved list whenever applicable.
-3. Unit Preservation: Capture both the original unit and standard unit.
-4. Confidence & Review: Assign a realistic confidence score (0.0 to 1.0). If text is blurry, truncated, or ambiguous, assign < 0.8 and mark needs_review: true.
-5. Reference Ranges: Parse numeric low and high limits when provided. If none or complex, record in reference_range.text.
-6. Flags: Mark flag as "low" (below low range), "high" (above high range), "normal" (within range), or "unknown".
-7. Format: Return ONLY raw, valid JSON matching the specified schema. No markdown formatting, no conversational prose.
+3. Unit Preservation: Capture both `unit` and `standard_unit` as non-null strings (use `"%"` for percentage assays like `lymphocyte_pct`, `rdw`, `hba1c`, or standard clinical units like `"mg/dL"`, `"g/dL"`, `"U/L"` if an OCR capture omits the unit symbol).
+4. OCR Multi-Column Alignment: OCR from photos may split table rows across consecutive lines in shifted order (e.g., `unit / ref_range / value / test_name` or `test_name / ref_range / value`). Match each biomarker to the single scalar result aligned with its unit and physiological/reference context; never copy another row's value and never report a hyphenated `low-high` reference interval as `value`.
+5. Confidence & Review: Assign a realistic confidence score (0.0 to 1.0). If text is blurry, truncated, or ambiguous, assign < 0.8 and mark needs_review: true.
+6. Reference Ranges: Parse numeric low and high limits when provided. If none or complex, record in reference_range.text.
+7. Flags: Mark flag as "low" (below low range), "high" (above high range), "normal" (within range), or "unknown".
+8. Format: Return ONLY raw, valid JSON matching the specified schema. No markdown formatting, no conversational prose.
 """
 
 EXTRACTION_SCHEMA_INSTRUCTION = """

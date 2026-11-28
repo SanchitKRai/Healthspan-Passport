@@ -10,8 +10,8 @@ from app.llm.redact import redact_pii
 logger = logging.getLogger(__name__)
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_CHAT_MODEL = "nvidia/nemotron-3.5-lightning"
-DEFAULT_CHAT_FALLBACK_MODEL = "moonshotai/kimi-k2"
+DEFAULT_CHAT_MODEL = "mistralai/mistral-small-3.2-24b-instruct"
+DEFAULT_CHAT_FALLBACK_MODEL = ""
 
 CHAT_SYSTEM_PROMPT = """You are Healthspan Passport AI Companion, an educational assistant that explains laboratory biomarkers and the user's confirmed report data in clear, calm language.
 

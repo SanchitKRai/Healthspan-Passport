@@ -121,10 +121,23 @@ class BiomarkerItem(BaseModel):
             self.needs_review = True
             return self
 
-        # Rule 3: Physiological limit validation (Contract Rule 3)
+        # Rule 3: Physiological limit validation (Contract Rule 3), scaled for common alternate units
         if self.standard_id in PHYSIOLOGICAL_LIMITS:
             min_val, max_val = PHYSIOLOGICAL_LIMITS[self.standard_id]
-            if self.value < min_val or self.value > max_val:
+            check_val = self.value
+            unit_norm = (self.unit or "").lower().strip().replace(" ", "").replace("µ", "u").replace("μ", "u")
+            if self.standard_id in (CanonicalBiomarker.WBC, CanonicalBiomarker.PLATELETS) and unit_norm in (
+                "cells/cumm", "/cumm", "cells/ul", "/ul"
+            ) and check_val > 100:
+                check_val = check_val / 1000.0
+            elif self.standard_id == CanonicalBiomarker.ALBUMIN and unit_norm == "g/l":
+                check_val = check_val / 10.0
+            elif self.standard_id == CanonicalBiomarker.CREATININE and unit_norm == "umol/l":
+                check_val = check_val / 88.4
+            elif self.standard_id == CanonicalBiomarker.GLUCOSE_FASTING and unit_norm == "mmol/l":
+                check_val = check_val * 18.0182
+
+            if check_val < min_val or check_val > max_val:
                 self.needs_review = True
                 self.flag = BiomarkerFlag.CRITICAL
 
