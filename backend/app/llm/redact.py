@@ -26,28 +26,51 @@ def _build_biomarker_alias_regex() -> re.Pattern:
 
 _BIOMARKER_ALIAS_REGEX = _build_biomarker_alias_regex()
 
-_NUMBER_UNIT_REGEX = re.compile(
-    r"(?i)(?<![A-Za-z0-9/])\d+(?:\.\d+)?\s*(?:"
-    r"mg/dl|g/dl|g/l|mmol/l|umol/l|µmol/l|μmol/l|mg/l|iu/l|u/l|fl|pg|"
-    r"meq/l|ng/ml|pg/ml|ng/dl|ug/dl|µg/dl|mm/hr|"
-    r"x?\s*10\^[369]/[uµμ]?l|cells/cumm|lakhs?/cumm|k/[uµμ]l|m/[uµμ]l|%"
+_NUMBER_UNIT_PATTERN = (
+    r"(?<![A-Za-z0-9/])\d+(?:\.\d+)?\s*(?:"
+    r"millions?/(?:cumm|cu\.?\s*mm|[u\u00b5\u03bc]l)|lakhs?/(?:cumm|cu\.?\s*mm)|"
+    r"mg/dl|g/dl|g/l|mmol/l|umol/l|[\u00b5\u03bc]mol/l|mg/l|iu/l|u/l|fl|pg|"
+    r"meq/l|ng/ml|pg/ml|ng/dl|ug/dl|[\u00b5\u03bc]g/dl|mm/hr|"
+    r"x?\s*10[\^±]?[369]/[u\u00b5\u03bc]?l|cells/(?:cumm|[u\u00b5\u03bc]l)|/(?:cumm|cu\.?\s*mm|[u\u00b5\u03bc]l)|"
+    r"k/[u\u00b5\u03bc]l|m/[u\u00b5\u03bc]l|%"
     r")(?![A-Za-z])"
 )
+_NUMBER_UNIT_REGEX = re.compile(_NUMBER_UNIT_PATTERN, re.IGNORECASE)
 
-# Lines matching clear non-result metadata should never be pulled into +-1 context expansion.
+_STANDALONE_UNIT_REGEX = re.compile(
+    r"(?i)^\s*(?:"
+    r"millions?/(?:cumm|cu\.?\s*mm|[u\u00b5\u03bc]l)|lakhs?/(?:cumm|cu\.?\s*mm)|"
+    r"mg/dl|g/dl|g/l|mmol/l|umol/l|[\u00b5\u03bc]mol/l|mg/l|iu/l|u/l|fl|pg|meq/l|"
+    r"x?\s*10[\^±-]?\d+/[u\u00b5\u03bc]?l|cells/(?:cumm|[u\u00b5\u03bc]l)|/(?:cumm|cu\.?\s*mm|[u\u00b5\u03bc]l)"
+    r")\s*$"
+)
+
+_NUMERIC_FRAGMENT_REGEX = re.compile(
+    r"^\s*[<>~]?\d+(?:[.,·-]\d+)?(?:\s*[-–·]\s*\d+(?:\.\d+)?)?\s*$"
+)
+
+# Clear address context required before treating a 6-digit number as an Indian pincode
+_ADDRESS_CUE_WORDS = (
+    r"address|addr|residence|pincode|pin\s*code|road|rd\.?|street|st\.?|marg|"
+    r"nagar|colony|vihar|enclave|sector|phase|block|flat|house\s+no|apt|apartments|"
+    r"lane|layout|bengaluru|bangalore|mumbai|delhi|chennai|kolkata|hyderabad|"
+    r"pune|noida|gurgaon|gurugram"
+)
+
+# Lines matching clear non-result metadata should never be pulled into context expansion.
 _NON_RESULT_CONTEXT_LINE = re.compile(
     r"(?i)(?:"
-    r"\b(?:patient\s*name|pt\.?\s*name|patient\s*id|pt\.?\s*id|uhid|mrn|"
+    r"\b(?:patient\s*name|pt\.?\s*name|patient\s*id|pt\.?\s*id|patient\b|uhid|mrn|"
     r"accession|barcode|bar\s*code|specimen|sample\s*id|order\s*id|"
     r"dob|date\s+of\s+birth|birth\s*date|report\s*date|collected|"
-    r"age\s*[:|/]|sex\s*[:|/]|gender\s*[:|/]|"
+    r"age(?:\s*/\s*(?:sex|gender))?\s*(?:[:|/]|\d)|sex\s*[:|/]|gender\s*[:|/]|"
     r"address|residence|pincode|pin\s*code|phone|mobile|tel|helpline|fax|email|"
     r"ref(?:erred)?\s*by|pathologist|verified\s*by|signed\s*by|signature|"
     r"lab\s*director|consultant)\b|"
     r"^\s*(?:mr|mrs|ms|miss|smt|shri|dr)\.?\s+[A-Za-z]|"
     r"\b(?:s/o|d/o|w/o|c/o)\b|"
     r"@|"
-    r"\b[1-8]\d{5}\b"
+    rf"(?:\b(?:{_ADDRESS_CUE_WORDS})\b[^\r\n]*\b[1-8]\d{{5}}\b|\bpin(?:\s*code)?\s*[:#-]?\s*[1-8]\d{{5}}\b)"
     r")"
 )
 
@@ -80,7 +103,8 @@ def _redact_chat_self_intro(match: re.Match) -> str:
 def minimize_to_result_lines(raw_text: str) -> Tuple[str, Dict[str, Any]]:
     """
     Keep only lines containing a known biomarker alias or a number+unit measurement,
-    plus +-1 line of non-PII context for split table rows. Drops headers, footers,
+    plus +-1 line of non-PII context for split table rows (and +-2 strictly for
+    orphaned numeric values in multi-column OCR text). Drops headers, footers,
     signatures, addresses, barcodes, and demographics.
     """
     if not raw_text or not raw_text.strip():
@@ -93,10 +117,12 @@ def minimize_to_result_lines(raw_text: str) -> Tuple[str, Dict[str, Any]]:
         stripped = line.strip()
         if not stripped:
             continue
+        if _NON_RESULT_CONTEXT_LINE.search(stripped):
+            continue
         has_alias = bool(_BIOMARKER_ALIAS_REGEX.search(stripped))
         has_num_unit = bool(_NUMBER_UNIT_REGEX.search(stripped))
-        # Guard against lines like "Age: 42 yrs" or header dates matching spurious units
-        if (has_alias or has_num_unit) and not _NON_RESULT_CONTEXT_LINE.search(stripped):
+        has_standalone_unit = bool(_STANDALONE_UNIT_REGEX.match(stripped))
+        if has_alias or has_num_unit or has_standalone_unit:
             matched_indices.add(idx)
 
     if not matched_indices:
@@ -112,6 +138,18 @@ def minimize_to_result_lines(raw_text: str) -> Tuple[str, Dict[str, Any]]:
             if 0 <= neighbor < len(lines):
                 neighbor_stripped = lines[neighbor].strip()
                 if neighbor_stripped and not _NON_RESULT_CONTEXT_LINE.search(neighbor_stripped):
+                    kept_indices.add(neighbor)
+        for neighbor in (idx - 2, idx + 2):
+            if 0 <= neighbor < len(lines):
+                neighbor_stripped = lines[neighbor].strip()
+                if (
+                    neighbor_stripped
+                    and not _NON_RESULT_CONTEXT_LINE.search(neighbor_stripped)
+                    and (
+                        _NUMERIC_FRAGMENT_REGEX.match(neighbor_stripped)
+                        or _STANDALONE_UNIT_REGEX.match(neighbor_stripped)
+                    )
+                ):
                     kept_indices.add(neighbor)
 
     kept_lines = [lines[i] for i in sorted(kept_indices)]
@@ -273,12 +311,14 @@ _PATTERNS = [
         re.compile(r"(?i)\b(address|addr|residence)\s*[:|]\s*[^\r\n]{4,140}"),
         r"\1: [REDACTED_ADDRESS]",
     ),
-    # Unlabelled street/locality addresses containing common road/sector/flat cues or 6-digit Indian pincode
+    # Unlabelled street/locality addresses: require explicit address/street/city cues (never match numeric lab result lines)
     (
         "address",
         re.compile(
-            r"(?im)^(?=[^\r\n]*\b(?:road|rd\.?|street|st\.?|marg|nagar|colony|vihar|enclave|sector|phase|block|flat|house\s+no|apt|apartments|lane|layout|bengaluru|bangalore|mumbai|delhi|chennai|kolkata|hyderabad|pune|noida|gurgaon|gurugram|[1-8]\d{5})\b)"
-            r"[^\r\n]*(?:,\s*[^\r\n]+|\b[1-8]\d{5}\b)[^\r\n]*$"
+            rf"^(?![^\r\n]*(?:{_NUMBER_UNIT_PATTERN}))"
+            rf"(?=[^\r\n]*\b(?:{_ADDRESS_CUE_WORDS})\b)"
+            r"[^\r\n]*(?:,\s*[^\r\n]+|\b[1-8]\d{5}\b)[^\r\n]*$",
+            re.IGNORECASE | re.MULTILINE,
         ),
         "[REDACTED_ADDRESS]",
     ),

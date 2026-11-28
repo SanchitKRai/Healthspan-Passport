@@ -320,6 +320,31 @@ def call_openrouter_api(model: str, prompt: str, api_key: str, timeout: float = 
         return res_json["choices"][0]["message"]["content"]
 
 
+def prepare_outbound_extraction_text(raw_text: str) -> Tuple[str, Dict[str, Any]]:
+    """
+    Shared outbound payload builder: minimize raw_text to biomarker/unit lines,
+    redact PII, and strip inline demographic fragments so preview and OpenRouter
+    extraction produce the exact same text.
+    """
+    minimized_text, min_stats = minimize_to_result_lines(raw_text)
+    if not minimized_text.strip():
+        return "", {
+            "total_lines": min_stats.get("total_lines", 0),
+            "matched_lines": 0,
+            "kept_lines": 0,
+            "redacted_categories": [],
+        }
+
+    redacted_text, redaction_counts = redact_pii(minimized_text)
+    redacted_text = _strip_inline_demographics(redacted_text)
+    return redacted_text, {
+        "total_lines": min_stats.get("total_lines", 0),
+        "matched_lines": min_stats.get("matched_lines", 0),
+        "kept_lines": min_stats.get("kept_lines", 0),
+        "redacted_categories": sorted(redaction_counts.keys()),
+    }
+
+
 def extract_biomarkers_with_llm(
     raw_text: str,
     api_key: Optional[str] = None,
@@ -354,23 +379,21 @@ def extract_biomarkers_with_llm(
 
     local_patient = _extract_local_patient_info(raw_text)
 
-    minimized_text, min_stats = minimize_to_result_lines(raw_text)
-    if not minimized_text.strip():
+    redacted_text, prep_stats = prepare_outbound_extraction_text(raw_text)
+    if not redacted_text.strip():
         logger.info(
             "Minimization retained 0/%s lines; skipping outbound OpenRouter call and falling back locally.",
-            min_stats.get("total_lines", 0),
+            prep_stats.get("total_lines", 0),
         )
         res = heuristic_extract(raw_text)
         res.extraction_metadata.model_used = "heuristic-rule-engine (minimized-zero-lines-local-fallback)"
         return res
 
-    redacted_text, redaction_counts = redact_pii(minimized_text)
-    redacted_text = _strip_inline_demographics(redacted_text)
     logger.info(
         "Prepared outbound OpenRouter text: kept_lines=%s/%s redacted_categories=%s",
-        min_stats.get("kept_lines", 0),
-        min_stats.get("total_lines", 0),
-        sorted(redaction_counts.keys()),
+        prep_stats.get("kept_lines", 0),
+        prep_stats.get("total_lines", 0),
+        prep_stats.get("redacted_categories", []),
     )
 
     start_time = time.time()

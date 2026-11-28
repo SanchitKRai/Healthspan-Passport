@@ -18,7 +18,7 @@ from app.schemas.biomarker import (
     ClinicalExportRequest,
 )
 from app.extraction.extractor import extract_text_from_file
-from app.llm.client import extract_biomarkers_with_llm
+from app.llm.client import extract_biomarkers_with_llm, prepare_outbound_extraction_text
 from app.llm.chat import ChatRequest, ChatResponse, answer_health_question
 from app.core.normalizer import normalize_biomarker
 from app.core.phenoage import calculate_phenoage, evaluate_risk_flags
@@ -36,10 +36,23 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS configuration
+DEFAULT_LOCALHOST_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+
+def get_cors_settings() -> Dict[str, Any]:
+    """Read comma-separated CORS_ORIGINS (default localhost-only; no wildcard '*') and optional ALLOW_ORIGIN_REGEX."""
+    raw_origins = os.getenv("CORS_ORIGINS", "")
+    parsed = [o.strip().rstrip("/") for o in raw_origins.split(",") if o.strip() and o.strip() != "*"]
+    origins = parsed if parsed else list(DEFAULT_LOCALHOST_ORIGINS)
+    origin_regex = os.getenv("ALLOW_ORIGIN_REGEX", "").strip() or None
+    return {"allow_origins": origins, "allow_origin_regex": origin_regex}
+
+
+_cors = get_cors_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "*"],
+    allow_origins=_cors["allow_origins"],
+    allow_origin_regex=_cors["allow_origin_regex"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,12 +68,8 @@ def health_check() -> Dict[str, str]:
     return {"status": "healthy", "service": "Healthspan Passport Extraction API"}
 
 
-@app.post("/api/extract", response_model=ExtractionResponse)
-def extract_report(
-    file: UploadFile = File(...),
-    allow_cloud_llm: bool = Form(False),
-) -> ExtractionResponse:
-    """Upload a PDF or image blood test report and extract structured biomarker data."""
+def _extract_upload_raw_text(file: UploadFile) -> str:
+    """Read uploaded file bytes, ensure underlying temp/spooled file closes, and extract raw text."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename missing from upload")
 
@@ -84,10 +93,30 @@ def extract_report(
             status_code=422,
             detail=f"Failed to parse uploaded {file_ext} file: {extract_meta.get('error')}"
         )
+    return raw_text
 
+
+@app.post("/api/extract/preview")
+def preview_extract_payload(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """Return the exact minimized and PII-redacted text that would be sent to OpenRouter, without calling it."""
+    raw_text = _extract_upload_raw_text(file)
+    outbound_text, prep_stats = prepare_outbound_extraction_text(raw_text)
+    return {
+        "outbound_text": outbound_text,
+        "zero_lines": not bool(outbound_text.strip()),
+        **prep_stats,
+    }
+
+
+@app.post("/api/extract", response_model=ExtractionResponse)
+def extract_report(
+    file: UploadFile = File(...),
+    allow_cloud_llm: bool = Form(False),
+) -> ExtractionResponse:
+    """Upload a PDF or image blood test report and extract structured biomarker data."""
+    raw_text = _extract_upload_raw_text(file)
     logger.info("Text extracted (%d chars). Calling biomarker extraction pipeline (allow_cloud_llm=%s).", len(raw_text), allow_cloud_llm)
-    extraction_result = extract_biomarkers_with_llm(raw_text, allow_cloud_llm=allow_cloud_llm)
-    return extraction_result
+    return extract_biomarkers_with_llm(raw_text, allow_cloud_llm=allow_cloud_llm)
 
 
 @app.get("/api/sample-reports")
@@ -107,6 +136,25 @@ def list_sample_reports() -> List[Dict[str, Any]]:
                     "size_bytes": f.stat().st_size
                 })
     return samples
+
+
+@app.post("/api/extract-sample/{filename}/preview")
+def preview_sample_report_payload(filename: str) -> Dict[str, Any]:
+    """Return the exact minimized and PII-redacted text for a sample report, without calling OpenRouter."""
+    file_path = SAMPLE_REPORTS_DIR / filename
+    if not file_path.resolve().is_relative_to(SAMPLE_REPORTS_DIR.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid file path")
+
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail=f"Sample report {filename} not found")
+
+    raw_text, _ = extract_text_from_file(file_path.read_bytes(), filename)
+    outbound_text, prep_stats = prepare_outbound_extraction_text(raw_text)
+    return {
+        "outbound_text": outbound_text,
+        "zero_lines": not bool(outbound_text.strip()),
+        **prep_stats,
+    }
 
 
 @app.post("/api/extract-sample/{filename}", response_model=ExtractionResponse)
