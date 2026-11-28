@@ -13,6 +13,7 @@ import BilingualExplainer, { ExplanationData } from "../components/BilingualExpl
 import ClinicianHandoff from "../components/ClinicianHandoff";
 import AICompanion from "../components/AICompanion";
 import ConsentToggle from "../components/ConsentToggle";
+import { BackendStatusChip } from "../components/BackendStatusChip";
 import { API_BASE_URL } from "../config/api";
 
 export default function Home() {
@@ -101,6 +102,9 @@ export default function Home() {
         allowCloudLlm={allowCloudLlm}
         onEnableCloudLlm={() => setAllowCloudLlm(true)}
       />
+      <div className="flex justify-end">
+        <BackendStatusChip />
+      </div>
       <ConsentToggle allowCloudLlm={allowCloudLlm} onChange={setAllowCloudLlm} />
       {!extractedData && (
         <>

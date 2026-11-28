@@ -87,3 +87,44 @@ def test_api_sample_extract_consent_gating(monkeypatch):
         assert mock_api.call_count == 0
         assert "local-only" in resp.json()["extraction_metadata"]["model_used"]
 
+
+def test_extract_preview_endpoints_strip_pii_without_cloud_call():
+    from unittest.mock import patch
+    from app.main import app
+
+    client = TestClient(app)
+    report_content = b"Mr. Aarav Sharma\n42 MG Road, Bengaluru 560038\nFasting Blood Glucose: 98 mg/dL\n"
+
+    with patch("app.llm.client.call_openrouter_api") as mock_api:
+        files = {"file": ("report.txt", io.BytesIO(report_content), "text/plain")}
+        resp = client.post("/api/extract/preview", files=files)
+        assert resp.status_code == 200
+        assert mock_api.call_count == 0
+        data = resp.json()
+        assert data["zero_lines"] is False
+        assert "Aarav Sharma" not in data["outbound_text"]
+        assert "560038" not in data["outbound_text"]
+        assert "98 mg/dL" in data["outbound_text"]
+
+        sample_resp = client.post("/api/extract-sample/01_dr_lal_healthy_adult.pdf/preview")
+        assert sample_resp.status_code == 200
+        assert mock_api.call_count == 0
+        assert sample_resp.json()["zero_lines"] is False
+
+
+def test_cors_settings_defaults_and_env_parsing(monkeypatch):
+    from app.main import DEFAULT_LOCALHOST_ORIGINS, get_cors_settings
+
+    monkeypatch.delenv("CORS_ORIGINS", raising=False)
+    monkeypatch.delenv("ALLOW_ORIGIN_REGEX", raising=False)
+    default_cfg = get_cors_settings()
+    assert default_cfg["allow_origins"] == DEFAULT_LOCALHOST_ORIGINS
+    assert "*" not in default_cfg["allow_origins"]
+    assert default_cfg["allow_origin_regex"] is None
+
+    monkeypatch.setenv("CORS_ORIGINS", "https://healthspan-passport.vercel.app/, *, http://localhost:3000")
+    monkeypatch.setenv("ALLOW_ORIGIN_REGEX", r"^https://healthspan-passport(?:-[a-z0-9-]+)?\.vercel\.app$")
+    prod_cfg = get_cors_settings()
+    assert prod_cfg["allow_origins"] == ["https://healthspan-passport.vercel.app", "http://localhost:3000"]
+    assert prod_cfg["allow_origin_regex"] == r"^https://healthspan-passport(?:-[a-z0-9-]+)?\.vercel\.app$"
+

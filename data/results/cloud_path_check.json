@@ -1,0 +1,122 @@
+{
+  "generated_at_utc": "2026-11-28T06:41:18Z",
+  "scope": "N=3, synthetic reports, early check",
+  "data_collection_setting": "deny",
+  "primary_model": "nvidia/nemotron-3.5-lightning",
+  "fallback_model": "moonshotai/kimi-k2",
+  "reports_tested": 3,
+  "cloud_success_count": 0,
+  "total_expected_fields": 20,
+  "total_matched_fields": 10,
+  "overall_accuracy_pct": 50.0,
+  "results": [
+    {
+      "report": "01_dr_lal_healthy_adult.pdf",
+      "format": "digital_pdf",
+      "model_used": "heuristic-rule-engine (api-fallback)",
+      "used_cloud_llm": false,
+      "valid_json_returned": false,
+      "expected_fields": 10,
+      "extracted_fields": 10,
+      "matched_fields": 10,
+      "accuracy_pct": 100.0,
+      "latency_ms": 47367,
+      "kept_lines": 10,
+      "total_lines": 60,
+      "extracted_sample": [
+        {
+          "id": "albumin",
+          "value": 4.5,
+          "unit": "g/dL"
+        },
+        {
+          "id": "creatinine",
+          "value": 0.9,
+          "unit": "mg/dL"
+        },
+        {
+          "id": "glucose_fasting",
+          "value": 88.0,
+          "unit": "mg/dL"
+        },
+        {
+          "id": "crp",
+          "value": 0.8,
+          "unit": "mg/L"
+        },
+        {
+          "id": "lymphocyte_pct",
+          "value": 32.0,
+          "unit": "%"
+        },
+        {
+          "id": "mcv",
+          "value": 89.0,
+          "unit": "fL"
+        },
+        {
+          "id": "rdw",
+          "value": 12.8,
+          "unit": "%"
+        },
+        {
+          "id": "alp",
+          "value": 78.0,
+          "unit": "U/L"
+        },
+        {
+          "id": "wbc",
+          "value": 6.8,
+          "unit": "10^3/uL"
+        },
+        {
+          "id": "hemoglobin",
+          "value": 15.2,
+          "unit": "g/dL"
+        }
+      ],
+      "errors": {
+        "nvidia/nemotron-3.5-lightning": "Empty content (finish_reason=length)",
+        "moonshotai/kimi-k2": "HTTP 402: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. You requested up to 4096 tokens, but can only afford 1880. To increase, visit https://openrouter.ai/workspaces/[REDACTED] and adjust the key's total limit\",\"code\":402,\"metadata\":{\"limit_source\":\"openrouter_credits\",\"remedy_hint\":\"Add credits at https://openrouter.ai/settings/credits, or lower max_tokens / prompt size to "
+      }
+    },
+    {
+      "report": "09_phone_photo_cbc_skewed.jpg",
+      "format": "phone_photo",
+      "model_used": "heuristic-rule-engine (api-fallback)",
+      "used_cloud_llm": false,
+      "valid_json_returned": false,
+      "expected_fields": 6,
+      "extracted_fields": 0,
+      "matched_fields": 0,
+      "accuracy_pct": 0.0,
+      "latency_ms": 49102,
+      "kept_lines": 23,
+      "total_lines": 29,
+      "extracted_sample": [],
+      "errors": {
+        "nvidia/nemotron-3.5-lightning": "Empty content (finish_reason=length)",
+        "moonshotai/kimi-k2": "HTTP 402: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. You requested up to 4096 tokens, but can only afford 1731. To increase, visit https://openrouter.ai/workspaces/[REDACTED] and adjust the key's total limit\",\"code\":402,\"metadata\":{\"limit_source\":\"openrouter_credits\",\"remedy_hint\":\"Add credits at https://openrouter.ai/settings/credits, or lower max_tokens / prompt size to "
+      }
+    },
+    {
+      "report": "10_phone_photo_metabolic_shadow.jpg",
+      "format": "phone_photo",
+      "model_used": "heuristic-rule-engine (api-fallback)",
+      "used_cloud_llm": false,
+      "valid_json_returned": false,
+      "expected_fields": 4,
+      "extracted_fields": 0,
+      "matched_fields": 0,
+      "accuracy_pct": 0.0,
+      "latency_ms": 48363,
+      "kept_lines": 16,
+      "total_lines": 24,
+      "extracted_sample": [],
+      "errors": {
+        "nvidia/nemotron-3.5-lightning": "Empty content (finish_reason=length)",
+        "moonshotai/kimi-k2": "HTTP 402: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. You requested up to 4096 tokens, but can only afford 1584. To increase, visit https://openrouter.ai/workspaces/[REDACTED] and adjust the key's total limit\",\"code\":402,\"metadata\":{\"limit_source\":\"openrouter_credits\",\"remedy_hint\":\"Add credits at https://openrouter.ai/settings/credits, or lower max_tokens / prompt size to "
+      }
+    }
+  ]
+}

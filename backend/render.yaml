@@ -11,3 +11,6 @@ services:
         sync: false
       - key: CORS_ORIGINS
         value: "https://healthspan-passport.vercel.app,http://localhost:3000"
+      # Optional: restrict preview origins to your Vercel project only
+      # - key: ALLOW_ORIGIN_REGEX
+      #   value: "^https://healthspan-passport(?:-[a-z0-9-]+)?\\.vercel\\.app$"

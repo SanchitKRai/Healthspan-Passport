@@ -173,3 +173,37 @@ def test_heuristic_regex_does_not_bleed_across_lines():
     assert hb.value == 13.1
     assert rdw is not None
     assert rdw.value == 13.0
+
+
+def test_call_openrouter_api_empty_content_and_model_payloads():
+    from app.llm.client import call_openrouter_api
+
+    empty_resp = MagicMock()
+    empty_resp.raise_for_status.return_value = None
+    empty_resp.json.return_value = {"choices": [{"finish_reason": "length", "message": {"content": None}}]}
+
+    ok_resp = MagicMock()
+    ok_resp.raise_for_status.return_value = None
+    ok_resp.json.return_value = {"choices": [{"finish_reason": "stop", "message": {"content": '{"biomarkers":[]}'}}]}
+
+    mock_client = MagicMock()
+    mock_client.post.side_effect = [empty_resp, ok_resp]
+    mock_cm = MagicMock()
+    mock_cm.__enter__.return_value = mock_client
+    mock_cm.__exit__.return_value = False
+
+    with patch("app.llm.client.httpx.Client", return_value=mock_cm):
+        with pytest.raises(ValueError, match="empty content"):
+            call_openrouter_api("nvidia/nemotron-3.5-lightning", "Serum Albumin: 4.5 g/dL", "sk-test")
+
+        first_payload = mock_client.post.call_args_list[0].kwargs["json"]
+        assert first_payload["max_tokens"] == 4096
+        assert first_payload["provider"] == {"data_collection": "deny"}
+        assert first_payload["response_format"] == {"type": "json_object"}
+
+        res = call_openrouter_api("moonshotai/kimi-k2", "Serum Albumin: 4.5 g/dL", "sk-test")
+        assert '"biomarkers"' in res
+        second_payload = mock_client.post.call_args_list[1].kwargs["json"]
+        assert second_payload["max_tokens"] == 4096
+        assert second_payload["provider"] == {"data_collection": "deny"}
+        assert "response_format" not in second_payload

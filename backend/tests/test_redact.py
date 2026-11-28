@@ -214,3 +214,58 @@ def test_extract_endpoint_closes_uploaded_file_handle():
     resp = extract_report(file=upload, allow_cloud_llm=False)
     assert resp.extraction_metadata.total_biomarkers_found >= 1
     assert upload.file.closed is True
+
+
+@pytest.mark.parametrize(
+    "result_line,expected_tokens",
+    [
+        ("Platelet Count 250000 /cumm", ["Platelet Count", "250000", "/cumm"]),
+        ("Total WBC 7200 /cumm", ["Total WBC", "7200", "/cumm"]),
+        ("RBC 4.8 million/cumm", ["RBC", "4.8", "million/cumm"]),
+        ("HbA1c: 5.9 %", ["HbA1c", "5.9", "%"]),
+        ("Lymphocyte Absolute Count 210000 cells/cumm", ["210000", "cells/cumm"]),
+        ("Platelets: 415000", ["Platelets", "415000"]),
+    ],
+)
+def test_real_lab_values_including_6_digit_counts_survive_redaction(result_line, expected_tokens):
+    minimized, stats = minimize_to_result_lines(result_line)
+    assert stats["kept_lines"] == 1
+    redacted, counts = redact_pii(minimized)
+    assert "[REDACTED_" not in redacted, f"Unexpected redaction in {result_line!r}: {redacted!r} ({counts})"
+    for tok in expected_tokens:
+        assert tok in redacted, f"Token {tok!r} lost from {result_line!r} -> {redacted!r}"
+
+
+def test_pincodes_still_redacted_with_address_context():
+    line = "42 MG Road, Indiranagar, Bengaluru 560038"
+    redacted, _ = redact_pii(line)
+    assert "560038" not in redacted
+    assert "[REDACTED_ADDRESS]" in redacted
+
+    minimized, _ = minimize_to_result_lines(line)
+    assert "560038" not in minimized
+
+
+def test_all_15_sample_reports_preserve_extracted_biomarker_values():
+    from pathlib import Path
+    from app.extraction.extractor import extract_text_from_file
+
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    gt = json.loads((repo_root / "data" / "ground_truth.json").read_text(encoding="utf-8"))
+    sample_dir = repo_root / "data" / "sample_reports"
+
+    for fname, info in sorted(gt.items()):
+        raw_text, _ = extract_text_from_file((sample_dir / fname).read_bytes(), fname)
+        minimized, _ = minimize_to_result_lines(raw_text)
+        redacted, _ = redact_pii(minimized)
+
+        for key, meta in info.get("biomarkers", {}).items():
+            val = meta["value"]
+            val_int = str(int(val)) if float(val).is_integer() else str(val)
+            val_str = str(val)
+            present_in_raw = (val_str in raw_text) or (val_int in raw_text)
+            if present_in_raw:
+                assert (val_str in redacted) or (val_int in redacted), (
+                    f"{fname}: ground-truth {key}={val} was present in extracted text "
+                    f"but lost/altered by minimize+redact"
+                )
