@@ -10,7 +10,7 @@ sys.path.insert(0, str(REPO_ROOT / "backend"))
 from app.extraction.extractor import extract_text_from_file
 from app.llm.client import call_openrouter_api, parse_and_validate_extraction
 from app.llm.prompts import build_extraction_prompt
-from app.llm.redact import redact_pii
+from app.llm.redact import minimize_to_result_lines, redact_pii
 
 SAMPLE_DIR = REPO_ROOT / "data" / "sample_reports"
 GROUND_TRUTH_FILE = REPO_ROOT / "data" / "ground_truth.json"
@@ -73,7 +73,10 @@ def run_bakeoff():
             error_msg = None
 
             try:
-                redacted_text, _ = redact_pii(raw_text)
+                minimized_text, _ = minimize_to_result_lines(raw_text)
+                if not minimized_text.strip():
+                    raise ValueError("Zero biomarker lines retained after minimization")
+                redacted_text, _ = redact_pii(minimized_text)
                 prompt = build_extraction_prompt(redacted_text)
                 raw_resp = call_openrouter_api(m_slug, prompt, api_key, timeout=45.0)
                 duration_ms = int((time.time() - t_start) * 1000)

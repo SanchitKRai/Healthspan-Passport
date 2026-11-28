@@ -167,15 +167,23 @@ def answer_health_question(req: ChatRequest) -> ChatResponse:
     if fallback_model and fallback_model != primary_model:
         models_to_try.append(fallback_model)
 
+    # Final fail-closed redaction pass across every outbound message before network I/O.
+    safe_messages = [
+        {"role": m["role"], "content": redact_pii(m["content"])[0]}
+        for m in messages
+    ]
+
     try:
         with httpx.Client(timeout=35.0) as client:
             for model in models_to_try:
                 payload = {
                     "model": model,
-                    "messages": messages,
+                    "messages": safe_messages,
                     "temperature": 0.2,
                     # Leave headroom for models that use some output tokens for reasoning.
                     "max_tokens": 1200,
+                    # Request no prompt/completion data collection (OpenRouter provider routing docs).
+                    "provider": {"data_collection": "deny"},
                 }
                 response = client.post(OPENROUTER_API_URL, headers=headers, json=payload)
                 response.raise_for_status()
@@ -199,5 +207,5 @@ def answer_health_question(req: ChatRequest) -> ChatResponse:
 
         raise ValueError("All configured chat models returned empty content.")
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
-        logger.exception("OpenRouter chat request failed")
+        logger.warning("OpenRouter chat request failed (%s)", type(exc).__name__)
         raise RuntimeError("The AI assistant is temporarily unavailable. Please try again.") from exc

@@ -38,7 +38,7 @@ export const ConsentToggle: React.FC<ConsentToggleProps> = ({
           <p className="text-xs text-slate-600 leading-relaxed">
             {allowCloudLlm ? (
               <>
-                Enabled: Redacted lab text and redacted chat messages (with names, phones, emails, IDs, dates, and addresses stripped) may be sent to OpenRouter (<code className="font-mono text-[11px]">nvidia/nemotron-3.5-lightning</code> / <code className="font-mono text-[11px]">moonshotai/kimi-k2</code>).
+                Enabled: Minimized, PII-redacted biomarker lines and redacted chat messages (names, phones, emails, IDs, dates, barcodes, and addresses stripped) may be sent to OpenRouter (<code className="font-mono text-[11px]">nvidia/nemotron-3.5-lightning</code> / <code className="font-mono text-[11px]">moonshotai/kimi-k2</code>) with <code className="font-mono text-[11px]">provider.data_collection=&quot;deny&quot;</code>. Note: the provider&apos;s own retention policy is outside our control.
               </>
             ) : (
               <>
