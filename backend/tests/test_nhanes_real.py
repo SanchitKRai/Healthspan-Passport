@@ -50,3 +50,20 @@ def test_real_nhanes_results_json_exists_and_consistent():
     assert len(data["quartiles_by_age_acceleration"]) == 4
     assert "hr_per_1yr_age_acceleration" in data["cox_ph_adjusted_for_age"]
     assert "phenoage_alone" in data["c_index_comparison"]
+
+    sens = data.get("sensitivity_analyses")
+    assert sens is not None
+    assert sens["hr_per_1sd_age_acceleration"]["hr"] > 1.0
+    assert sens["winsorized_1st_99th_percentile"]["per_1yr"]["hr"] > 1.0
+    assert sens["excluding_crp_gt_10_mg_dl"]["excluded_n"] >= 0
+    assert sens["residual_based_acceleration"]["per_1yr"]["hr"] > 1.0
+
+    top20 = sens["top_20_extreme_acceleration_rows"]
+    assert len(top20) == 20
+    required_markers = {
+        "albumin_g_l", "creatinine_umol_l", "glucose_mmol_l", "crp_mg_dl",
+        "lymphocyte_pct", "mcv_fl", "rdw_pct", "alp_u_l", "wbc_10_9_l", "assessment"
+    }
+    for row in top20:
+        assert required_markers.issubset(row.keys())
+
