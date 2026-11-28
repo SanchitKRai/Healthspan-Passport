@@ -1,6 +1,6 @@
 # Real CDC NHANES (1999–2010) & NCHS 2019 Linked Mortality Replication
 
-> **Generated:** `2026-11-28T04:16:25Z`
+> **Generated:** `2026-11-28T04:40:04Z`
 > **Script:** [`backend/scripts/nhanes_real/build_cohort.py`](../backend/scripts/nhanes_real/build_cohort.py) (uses `calculate_phenoage` imported directly from [`backend/app/core/phenoage.py`](../backend/app/core/phenoage.py))
 > **Raw Data JSON Output:** [`data/results/nhanes_real_results.json`](../data/results/nhanes_real_results.json)
 
@@ -54,39 +54,39 @@
 | **2a. Winsorized 1st/99th pct ([-17.4, +26.2] yrs), per +1 yr** | 27,256 | 5,212 | **1.0593** | 1.0564–1.0622 | 0.8534 |
 | **2b. Winsorized 1st/99th pct (SD = 7.54 yrs), per +1 SD** | 27,256 | 5,212 | **1.5443** | 1.5132–1.5761 | 0.8534 |
 | **3. Excluding `CRP > 10 mg/dL` (excluded 36 rows), per +1 yr** | 27,220 | 5,194 | **1.0302** | 1.0289–1.0315 | 0.8480 |
-| **4a. Residual-based (`PhenoAge ~ Age`, slope=1.0670, int=-8.3771), per +1 yr** | 27,256 | 5,212 | **1.0285** | 1.0272–1.0298 | 0.8475 |
+| **4a. Residual-based (`PhenoAge ~ Age`, slope=1.0670, int=-8.3771), per +1 yr (equals primary by construction)** | 27,256 | 5,212 | **1.0285** | 1.0272–1.0298 | 0.8475 |
 | **4b. Residual-based (SD = 8.85 yrs), per +1 SD** | 27,256 | 5,212 | **1.2828** | 1.2685–1.2972 | 0.8475 |
 
 ### What the Sensitivity Analyses Show About the Primary HR (1.0285 vs. ~1.09)
-- **Verified primary driver (right-tail compression):** Winsorizing `age_acceleration` at the 1st/99th percentiles (`-17.4` to `+26.2` years; clipping `252` low and `270` high rows) raises the age-adjusted HR per +1 year from **1.0285** to **1.0593** (95% CI: 1.0564–1.0622) and increases the joint Cox model c-index from **0.8475** to **0.8534**. Because creatinine (`+0.0095 * umol/L`) and glucose (`+0.1953 * mmol/L`) enter the Gompertz linear predictor linearly, severe clinical extremes produce +90 to +171.5 years of acceleration (see table below), flattening the log-linear Cox slope per +1 year on unwinsorized data.
-- **Verified non-drivers in this sample:** Excluding `CRP > 10 mg/dL` removes only `36` rows and changes HR minimally (**1.0302**). Linear residualization (`PhenoAge ~ RIDAGEYR`) yields essentially identical per-year HR (**1.0285**) because chronological age is already controlled in the Cox model.
+- **Verified primary driver (right-tail compression):** Winsorizing `age_acceleration` at the 1st/99th percentiles (`-17.4` to `+26.2` years; clipping `252` low and `270` high rows) raises the age-adjusted HR per +1 year from **1.0285** to **1.0593** (95% CI: 1.0564–1.0622) and increases the joint Cox model c-index from **0.847511** (`0.8475`) to **0.853354** (`0.8534`; compare PhenoAge alone **0.853441** -> `0.8534`, confirming the shared 4-decimal `0.8534` is rounding). Because creatinine (`+0.0095 * umol/L`) and glucose (`+0.1953 * mmol/L`) enter the Gompertz linear predictor linearly, severe clinical extremes produce +90 to +171.5 years of acceleration (see table below), flattening the log-linear Cox slope per +1 year on unwinsorized data.
+- **Verified non-drivers in this sample:** Excluding `CRP > 10 mg/dL` removes only `36` rows and changes HR minimally (**1.0302**). Linear residualization (`PhenoAge ~ RIDAGEYR`, row 4a) equals the primary per-year HR (**1.0285**) **by construction**, because `RIDAGEYR` is already included linearly in the Cox regression (only SD-scaled HR row 4b differs slightly because `SD(residual) = 8.85` yrs vs. `SD(raw) = 8.93` yrs).
 - **Untested hypotheses for the remaining gap below ~1.09:** Even after winsorization, HR per +1 year is 1.0593 rather than ~1.09. Untested hypotheses (not evaluated here) include survey weighting/strata/PSU adjustment, differences in NHANES cycle/age inclusion rules, non-fasting serum glucose (`LBXSGL`) vs. alternative glucose definitions, early-cycle creatinine calibration differences, and NCHS public-use linked mortality perturbation.
 
 ### Top 20 Most Extreme `|Age Acceleration|` Rows (All 9 Markers)
-Inspection of the 20 largest absolute acceleration values (all positive extremes, +90.0 to +171.5 years): all 20 show plausible severe clinical pathology (predominantly end-stage renal-range creatinine 551.6–1,573.5 µmol/L, hyperglycemic crisis glucose up to 43.12 mmol/L, and/or acute CRP/RDW/ALP abnormalities), and 14 of 20 died during follow-up (`MORTSTAT = 1`), rather than obvious coding/sentinel errors.
+Inspection of the 20 largest absolute acceleration values (all positive extremes, +90.0 to +171.5 years): all 20 show values consistent with severe clinical pathology (predominantly end-stage renal-range creatinine 551.6–1,573.5 µmol/L, hyperglycemic crisis glucose up to 43.12 mmol/L, and/or acute CRP/RDW/ALP abnormalities), and 14 of 20 died during follow-up (`MORTSTAT = 1`), rather than obvious coding/sentinel errors.
 
 | SEQN | Cycle | Age | PhenoAge | Accel | Mort | Months | Alb (g/L) | Creat (µmol/L) | Gluc (mmol/L) | CRP (mg/dL) | Lymph % | MCV (fL) | RDW % | ALP (U/L) | WBC | Assessment |
 | ---: | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | :--- |
-| 35764 | `2005_2006` | 59 | 230.5 | +171.5 | 0 | 169 | 39.0 | 1573.5 | 4.77 | 0.05 | 24.0 | 99.6 | 18.0 | 32 | 7.6 | plausible_clinical_extreme (survived_followup): severe_creatinine(1573.5 umol/L), high_rdw(18.0%) |
-| 57643 | `2009_2010` | 45 | 179.4 | +134.4 | 0 | 118 | 42.0 | 1384.3 | 4.05 | 0.50 | 25.9 | 97.4 | 13.5 | 65 | 4.8 | plausible_clinical_extreme (survived_followup): severe_creatinine(1384.3 umol/L) |
-| 22413 | `2003_2004` | 68 | 199.5 | +131.5 | 1 | 47 | 27.0 | 1211.1 | 5.38 | 1.94 | 8.5 | 98.7 | 14.1 | 83 | 9.2 | plausible_clinical_extreme (died): severe_creatinine(1211.1 umol/L), low_albumin(27 g/L), low_lymph(8.5%) |
-| 9172 | `1999_2000` | 75 | 205.5 | +130.5 | 1 | 9 | 44.0 | 875.2 | 19.54 | 1.01 | 29.5 | 81.6 | 19.5 | 112 | 7.5 | plausible_clinical_extreme (died): severe_creatinine(875.2 umol/L), severe_glucose(19.5 mmol/L), high_rdw(19.5%) |
-| 16283 | `2001_2002` | 72 | 198.1 | +126.1 | 1 | 11 | 37.0 | 1140.4 | 5.22 | 0.38 | 30.7 | 90.1 | 17.7 | 154 | 7.7 | plausible_clinical_extreme (died): severe_creatinine(1140.4 umol/L), high_rdw(17.7%) |
-| 3886 | `1999_2000` | 66 | 191.3 | +125.3 | 1 | 85 | 42.0 | 733.7 | 10.27 | 0.05 | 9.0 | 82.4 | 27.6 | 70 | 6.6 | plausible_clinical_extreme (died): severe_creatinine(733.7 umol/L), high_rdw(27.6%), low_lymph(9.0%) |
-| 33294 | `2005_2006` | 60 | 175.7 | +115.7 | 1 | 147 | 31.0 | 760.2 | 10.16 | 5.90 | 43.0 | 108.2 | 20.6 | 121 | 5.9 | plausible_clinical_extreme (died): severe_creatinine(760.2 umol/L), high_rdw(20.6%) |
-| 11791 | `2001_2002` | 32 | 145.2 | +113.2 | 1 | 89 | 41.0 | 875.2 | 4.88 | 1.24 | 6.7 | 112.8 | 17.4 | 63 | 15.5 | plausible_clinical_extreme (died): severe_creatinine(875.2 umol/L), high_rdw(17.4%), high_wbc(15.5), low_lymph(6.7%) |
-| 25966 | `2003_2004` | 38 | 148.8 | +110.8 | 1 | 131 | 42.0 | 1140.4 | 4.16 | 0.12 | 30.5 | 95.2 | 14.5 | 70 | 5.1 | plausible_clinical_extreme (died): severe_creatinine(1140.4 umol/L) |
-| 9405 | `1999_2000` | 46 | 154.0 | +108.0 | 1 | 67 | 42.0 | 901.7 | 5.27 | 1.83 | 19.5 | 87.2 | 18.8 | 87 | 9.4 | plausible_clinical_extreme (died): severe_creatinine(901.7 umol/L), high_rdw(18.8%) |
-| 58111 | `2009_2010` | 29 | 136.9 | +107.9 | 0 | 114 | 27.0 | 551.6 | 25.42 | 0.14 | 31.3 | 84.0 | 16.7 | 111 | 6.5 | plausible_clinical_extreme (survived_followup): severe_creatinine(551.6 umol/L), severe_glucose(25.4 mmol/L), low_albumin(27 g/L) |
-| 61998 | `2009_2010` | 26 | 133.9 | +107.9 | 0 | 118 | 43.0 | 970.6 | 4.33 | 1.39 | 18.5 | 94.4 | 15.6 | 349 | 4.9 | plausible_clinical_extreme (survived_followup): severe_creatinine(970.6 umol/L), high_alp(349 U/L) |
-| 20234 | `2001_2002` | 40 | 145.2 | +105.2 | 1 | 91 | 38.0 | 954.7 | 4.05 | 0.47 | 24.6 | 97.5 | 17.3 | 57 | 5.1 | plausible_clinical_extreme (died): severe_creatinine(954.7 umol/L), high_rdw(17.3%) |
-| 15185 | `2001_2002` | 58 | 160.9 | +102.9 | 1 | 40 | 31.0 | 804.4 | 3.39 | 2.60 | 33.9 | 83.2 | 21.3 | 94 | 9.2 | plausible_clinical_extreme (died): severe_creatinine(804.4 umol/L), high_rdw(21.3%) |
-| 9483 | `1999_2000` | 51 | 153.1 | +102.1 | 1 | 163 | 46.0 | 689.5 | 13.54 | 0.45 | 19.8 | 105.1 | 17.5 | 146 | 10.0 | plausible_clinical_extreme (died): severe_creatinine(689.5 umol/L), high_rdw(17.5%) |
-| 51643 | `2009_2010` | 42 | 143.6 | +101.6 | 0 | 129 | 36.0 | 224.5 | 43.12 | 1.41 | 17.1 | 91.2 | 12.6 | 120 | 11.2 | plausible_clinical_extreme (survived_followup): severe_glucose(43.1 mmol/L) |
-| 3743 | `1999_2000` | 76 | 176.7 | +100.7 | 0 | 231 | 37.0 | 79.6 | 24.92 | 29.60 | 13.9 | 78.1 | 27.5 | 110 | 17.3 | plausible_clinical_extreme (survived_followup): severe_glucose(24.9 mmol/L), crp>=10(29.60 mg/dL), high_rdw(27.5%), high_wbc(17.3) |
-| 3894 | `1999_2000` | 61 | 161.4 | +100.4 | 1 | 116 | 43.0 | 1043.1 | 4.77 | 0.22 | 36.5 | 88.5 | 15.7 | 52 | 4.2 | plausible_clinical_extreme (died): severe_creatinine(1043.1 umol/L) |
-| 1855 | `1999_2000` | 69 | 159.0 | +90.0 | 1 | 45 | 44.0 | 892.8 | 4.99 | 0.39 | 20.3 | 92.7 | 16.0 | 86 | 4.9 | plausible_clinical_extreme (died): severe_creatinine(892.8 umol/L) |
-| 24589 | `2003_2004` | 60 | 150.0 | +90.0 | 1 | 71 | 37.0 | 831.0 | 10.32 | 1.05 | 28.0 | 88.6 | 13.1 | 109 | 9.4 | plausible_clinical_extreme (died): severe_creatinine(831.0 umol/L) |
+| 35764 | `2005_2006` | 59 | 230.5 | +171.5 | 0 | 169 | 39.0 | 1573.5 | 4.77 | 0.05 | 24.0 | 99.6 | 18.0 | 32 | 7.6 | consistent_with_clinical_extreme (survived_followup): severe_creatinine(1573.5 umol/L), high_rdw(18.0%) |
+| 57643 | `2009_2010` | 45 | 179.4 | +134.4 | 0 | 118 | 42.0 | 1384.3 | 4.05 | 0.50 | 25.9 | 97.4 | 13.5 | 65 | 4.8 | consistent_with_clinical_extreme (survived_followup): severe_creatinine(1384.3 umol/L) |
+| 22413 | `2003_2004` | 68 | 199.5 | +131.5 | 1 | 47 | 27.0 | 1211.1 | 5.38 | 1.94 | 8.5 | 98.7 | 14.1 | 83 | 9.2 | consistent_with_clinical_extreme (died): severe_creatinine(1211.1 umol/L), low_albumin(27 g/L), low_lymph(8.5%) |
+| 9172 | `1999_2000` | 75 | 205.5 | +130.5 | 1 | 9 | 44.0 | 875.2 | 19.54 | 1.01 | 29.5 | 81.6 | 19.5 | 112 | 7.5 | consistent_with_clinical_extreme (died): severe_creatinine(875.2 umol/L), severe_glucose(19.5 mmol/L), high_rdw(19.5%) |
+| 16283 | `2001_2002` | 72 | 198.1 | +126.1 | 1 | 11 | 37.0 | 1140.4 | 5.22 | 0.38 | 30.7 | 90.1 | 17.7 | 154 | 7.7 | consistent_with_clinical_extreme (died): severe_creatinine(1140.4 umol/L), high_rdw(17.7%) |
+| 3886 | `1999_2000` | 66 | 191.3 | +125.3 | 1 | 85 | 42.0 | 733.7 | 10.27 | 0.05 | 9.0 | 82.4 | 27.6 | 70 | 6.6 | consistent_with_clinical_extreme (died): severe_creatinine(733.7 umol/L), high_rdw(27.6%), low_lymph(9.0%) |
+| 33294 | `2005_2006` | 60 | 175.7 | +115.7 | 1 | 147 | 31.0 | 760.2 | 10.16 | 5.90 | 43.0 | 108.2 | 20.6 | 121 | 5.9 | consistent_with_clinical_extreme (died): severe_creatinine(760.2 umol/L), high_rdw(20.6%) |
+| 11791 | `2001_2002` | 32 | 145.2 | +113.2 | 1 | 89 | 41.0 | 875.2 | 4.88 | 1.24 | 6.7 | 112.8 | 17.4 | 63 | 15.5 | consistent_with_clinical_extreme (died): severe_creatinine(875.2 umol/L), high_rdw(17.4%), high_wbc(15.5), low_lymph(6.7%) |
+| 25966 | `2003_2004` | 38 | 148.8 | +110.8 | 1 | 131 | 42.0 | 1140.4 | 4.16 | 0.12 | 30.5 | 95.2 | 14.5 | 70 | 5.1 | consistent_with_clinical_extreme (died): severe_creatinine(1140.4 umol/L) |
+| 9405 | `1999_2000` | 46 | 154.0 | +108.0 | 1 | 67 | 42.0 | 901.7 | 5.27 | 1.83 | 19.5 | 87.2 | 18.8 | 87 | 9.4 | consistent_with_clinical_extreme (died): severe_creatinine(901.7 umol/L), high_rdw(18.8%) |
+| 58111 | `2009_2010` | 29 | 136.9 | +107.9 | 0 | 114 | 27.0 | 551.6 | 25.42 | 0.14 | 31.3 | 84.0 | 16.7 | 111 | 6.5 | consistent_with_clinical_extreme (survived_followup): severe_creatinine(551.6 umol/L), severe_glucose(25.4 mmol/L), low_albumin(27 g/L) |
+| 61998 | `2009_2010` | 26 | 133.9 | +107.9 | 0 | 118 | 43.0 | 970.6 | 4.33 | 1.39 | 18.5 | 94.4 | 15.6 | 349 | 4.9 | consistent_with_clinical_extreme (survived_followup): severe_creatinine(970.6 umol/L), high_alp(349 U/L) |
+| 20234 | `2001_2002` | 40 | 145.2 | +105.2 | 1 | 91 | 38.0 | 954.7 | 4.05 | 0.47 | 24.6 | 97.5 | 17.3 | 57 | 5.1 | consistent_with_clinical_extreme (died): severe_creatinine(954.7 umol/L), high_rdw(17.3%) |
+| 15185 | `2001_2002` | 58 | 160.9 | +102.9 | 1 | 40 | 31.0 | 804.4 | 3.39 | 2.60 | 33.9 | 83.2 | 21.3 | 94 | 9.2 | consistent_with_clinical_extreme (died): severe_creatinine(804.4 umol/L), high_rdw(21.3%) |
+| 9483 | `1999_2000` | 51 | 153.1 | +102.1 | 1 | 163 | 46.0 | 689.5 | 13.54 | 0.45 | 19.8 | 105.1 | 17.5 | 146 | 10.0 | consistent_with_clinical_extreme (died): severe_creatinine(689.5 umol/L), high_rdw(17.5%) |
+| 51643 | `2009_2010` | 42 | 143.6 | +101.6 | 0 | 129 | 36.0 | 224.5 | 43.12 | 1.41 | 17.1 | 91.2 | 12.6 | 120 | 11.2 | consistent_with_clinical_extreme (survived_followup): severe_glucose(43.1 mmol/L) |
+| 3743 | `1999_2000` | 76 | 176.7 | +100.7 | 0 | 231 | 37.0 | 79.6 | 24.92 | 29.60 | 13.9 | 78.1 | 27.5 | 110 | 17.3 | consistent_with_clinical_extreme (survived_followup): severe_glucose(24.9 mmol/L), crp>=10(29.60 mg/dL), high_rdw(27.5%), high_wbc(17.3) |
+| 3894 | `1999_2000` | 61 | 161.4 | +100.4 | 1 | 116 | 43.0 | 1043.1 | 4.77 | 0.22 | 36.5 | 88.5 | 15.7 | 52 | 4.2 | consistent_with_clinical_extreme (died): severe_creatinine(1043.1 umol/L) |
+| 1855 | `1999_2000` | 69 | 159.0 | +90.0 | 1 | 45 | 44.0 | 892.8 | 4.99 | 0.39 | 20.3 | 92.7 | 16.0 | 86 | 4.9 | consistent_with_clinical_extreme (died): severe_creatinine(892.8 umol/L) |
+| 24589 | `2003_2004` | 60 | 150.0 | +90.0 | 1 | 71 | 37.0 | 831.0 | 10.32 | 1.05 | 28.0 | 88.6 | 13.1 | 109 | 9.4 | consistent_with_clinical_extreme (died): severe_creatinine(831.0 umol/L) |
 
 ---
 

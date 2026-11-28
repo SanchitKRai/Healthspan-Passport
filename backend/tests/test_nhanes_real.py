@@ -49,14 +49,17 @@ def test_real_nhanes_results_json_exists_and_consistent():
     assert len(data["n_flow"]) == 4
     assert len(data["quartiles_by_age_acceleration"]) == 4
     assert "hr_per_1yr_age_acceleration" in data["cox_ph_adjusted_for_age"]
+    assert "joint_model_c_index_6dp" in data["cox_ph_adjusted_for_age"]
     assert "phenoage_alone" in data["c_index_comparison"]
+    assert "phenoage_alone_6dp" in data["c_index_comparison"]
 
     sens = data.get("sensitivity_analyses")
     assert sens is not None
     assert sens["hr_per_1sd_age_acceleration"]["hr"] > 1.0
     assert sens["winsorized_1st_99th_percentile"]["per_1yr"]["hr"] > 1.0
+    assert "joint_model_c_index_6dp" in sens["winsorized_1st_99th_percentile"]["per_1yr"]
     assert sens["excluding_crp_gt_10_mg_dl"]["excluded_n"] >= 0
-    assert sens["residual_based_acceleration"]["per_1yr"]["hr"] > 1.0
+    assert sens["residual_based_acceleration"]["per_1yr"]["hr"] == data["cox_ph_adjusted_for_age"]["hr_per_1yr_age_acceleration"]
 
     top20 = sens["top_20_extreme_acceleration_rows"]
     assert len(top20) == 20
@@ -66,4 +69,5 @@ def test_real_nhanes_results_json_exists_and_consistent():
     }
     for row in top20:
         assert required_markers.issubset(row.keys())
+        assert "consistent_with_clinical_extreme" in row["assessment"]
 

@@ -405,10 +405,13 @@ def build_and_analyze() -> Dict[str, Any]:
             "hr_per_1yr_chronological_age": round(hr_age, 4),
             "age_hr_95_ci": [round(hr_age_ci_low, 4), round(hr_age_ci_high, 4)],
             "joint_model_c_index": round(float(cph.concordance_index_), 4),
+            "joint_model_c_index_6dp": round(float(cph.concordance_index_), 6),
         },
         "c_index_comparison": {
             "phenoage_alone": round(c_index_phenoage, 4),
+            "phenoage_alone_6dp": round(c_index_phenoage, 6),
             "chronological_age_alone": round(c_index_chrono_age, 4),
+            "chronological_age_alone_6dp": round(c_index_chrono_age, 6),
             "delta_c_index": round(c_index_phenoage - c_index_chrono_age, 4),
         },
         "quartiles_by_age_acceleration": quartiles_summary,
@@ -436,8 +439,15 @@ def build_and_analyze() -> Dict[str, Any]:
         f"(95% CI: {hr_ci_low:.4f} - {hr_ci_high:.4f}, p = {hr_p:.2e})"
     )
     print(
-        f"C-index: PhenoAge = {c_index_phenoage:.4f} vs Age alone = {c_index_chrono_age:.4f} "
+        f"C-index: PhenoAge = {c_index_phenoage:.4f} ({c_index_phenoage:.6f}) vs "
+        f"Age alone = {c_index_chrono_age:.4f} ({c_index_chrono_age:.6f}) "
         f"(delta = {c_index_phenoage - c_index_chrono_age:+.4f})"
+    )
+    wins_sens = results["sensitivity_analyses"]["winsorized_1st_99th_percentile"]["per_1yr"]
+    print(
+        f"C-index 6dp check: primary_joint={float(cph.concordance_index_):.6f}, "
+        f"phenoage_alone={c_index_phenoage:.6f}, "
+        f"winsorized_joint={wins_sens['joint_model_c_index_6dp']:.6f}"
     )
     for q in quartiles_summary:
         print(
@@ -467,6 +477,7 @@ def _fit_cox_adjusted(df_sub: pd.DataFrame, exposure_col: str) -> Dict[str, Any]
         ],
         "p_value": float(cph.summary.loc[exposure_col, "p"]),
         "joint_model_c_index": round(float(cph.concordance_index_), 4),
+        "joint_model_c_index_6dp": round(float(cph.concordance_index_), 6),
     }
 
 
@@ -492,7 +503,7 @@ def _classify_extreme_row(row: pd.Series) -> str:
     if not drivers:
         drivers.append("multi_marker_cumulative")
     mort_note = "died" if int(row["MORTSTAT"]) == 1 else "survived_followup"
-    return f"plausible_clinical_extreme ({mort_note}): " + ", ".join(drivers)
+    return f"consistent_with_clinical_extreme ({mort_note}): " + ", ".join(drivers)
 
 
 def _compute_sensitivity_analyses(df_final: pd.DataFrame) -> Dict[str, Any]:
@@ -741,16 +752,16 @@ def _write_markdown_report(results: Dict[str, Any], md_path: Path) -> None:
             f"| **2a. Winsorized 1st/99th pct ([{wins['p01_years']:+.1f}, {wins['p99_years']:+.1f}] yrs), per +1 yr** | {wins['per_1yr']['n']:,} | {wins['per_1yr']['deaths']:,} | **{wins['per_1yr']['hr']:.4f}** | {wins['per_1yr']['hr_95_ci'][0]:.4f}–{wins['per_1yr']['hr_95_ci'][1]:.4f} | {wins['per_1yr']['joint_model_c_index']:.4f} |",
             f"| **2b. Winsorized 1st/99th pct (SD = {wins['sd_years']:.2f} yrs), per +1 SD** | {wins['per_1sd']['n']:,} | {wins['per_1sd']['deaths']:,} | **{wins['per_1sd']['hr']:.4f}** | {wins['per_1sd']['hr_95_ci'][0]:.4f}–{wins['per_1sd']['hr_95_ci'][1]:.4f} | {wins['per_1sd']['joint_model_c_index']:.4f} |",
             f"| **3. Excluding `CRP > 10 mg/dL` (excluded {crp10['excluded_n']} rows), per +1 yr** | {crp10['n']:,} | {crp10['deaths']:,} | **{crp10['hr']:.4f}** | {crp10['hr_95_ci'][0]:.4f}–{crp10['hr_95_ci'][1]:.4f} | {crp10['joint_model_c_index']:.4f} |",
-            f"| **4a. Residual-based (`PhenoAge ~ Age`, slope={resid['ols_slope']:.4f}, int={resid['ols_intercept']:.4f}), per +1 yr** | {resid['per_1yr']['n']:,} | {resid['per_1yr']['deaths']:,} | **{resid['per_1yr']['hr']:.4f}** | {resid['per_1yr']['hr_95_ci'][0]:.4f}–{resid['per_1yr']['hr_95_ci'][1]:.4f} | {resid['per_1yr']['joint_model_c_index']:.4f} |",
+            f"| **4a. Residual-based (`PhenoAge ~ Age`, slope={resid['ols_slope']:.4f}, int={resid['ols_intercept']:.4f}), per +1 yr (equals primary by construction)** | {resid['per_1yr']['n']:,} | {resid['per_1yr']['deaths']:,} | **{resid['per_1yr']['hr']:.4f}** | {resid['per_1yr']['hr_95_ci'][0]:.4f}–{resid['per_1yr']['hr_95_ci'][1]:.4f} | {resid['per_1yr']['joint_model_c_index']:.4f} |",
             f"| **4b. Residual-based (SD = {resid['sd_years']:.2f} yrs), per +1 SD** | {resid['per_1sd']['n']:,} | {resid['per_1sd']['deaths']:,} | **{resid['per_1sd']['hr']:.4f}** | {resid['per_1sd']['hr_95_ci'][0]:.4f}–{resid['per_1sd']['hr_95_ci'][1]:.4f} | {resid['per_1sd']['joint_model_c_index']:.4f} |",
             "",
             "### What the Sensitivity Analyses Show About the Primary HR (1.0285 vs. ~1.09)",
-            f"- **Verified primary driver (right-tail compression):** Winsorizing `age_acceleration` at the 1st/99th percentiles (`{wins['p01_years']:+.1f}` to `{wins['p99_years']:+.1f}` years; clipping `{wins['n_clipped_low']}` low and `{wins['n_clipped_high']}` high rows) raises the age-adjusted HR per +1 year from **{cox['hr_per_1yr_age_acceleration']:.4f}** to **{wins['per_1yr']['hr']:.4f}** (95% CI: {wins['per_1yr']['hr_95_ci'][0]:.4f}–{wins['per_1yr']['hr_95_ci'][1]:.4f}) and increases the joint Cox model c-index from **{cox['joint_model_c_index']:.4f}** to **{wins['per_1yr']['joint_model_c_index']:.4f}**. Because creatinine (`+0.0095 * umol/L`) and glucose (`+0.1953 * mmol/L`) enter the Gompertz linear predictor linearly, severe clinical extremes produce +90 to +171.5 years of acceleration (see table below), flattening the log-linear Cox slope per +1 year on unwinsorized data.",
-            f"- **Verified non-drivers in this sample:** Excluding `CRP > 10 mg/dL` removes only `{crp10['excluded_n']}` rows and changes HR minimally (**{crp10['hr']:.4f}**). Linear residualization (`PhenoAge ~ RIDAGEYR`) yields essentially identical per-year HR (**{resid['per_1yr']['hr']:.4f}**) because chronological age is already controlled in the Cox model.",
+            f"- **Verified primary driver (right-tail compression):** Winsorizing `age_acceleration` at the 1st/99th percentiles (`{wins['p01_years']:+.1f}` to `{wins['p99_years']:+.1f}` years; clipping `{wins['n_clipped_low']}` low and `{wins['n_clipped_high']}` high rows) raises the age-adjusted HR per +1 year from **{cox['hr_per_1yr_age_acceleration']:.4f}** to **{wins['per_1yr']['hr']:.4f}** (95% CI: {wins['per_1yr']['hr_95_ci'][0]:.4f}–{wins['per_1yr']['hr_95_ci'][1]:.4f}) and increases the joint Cox model c-index from **{cox['joint_model_c_index_6dp']:.6f}** (`{cox['joint_model_c_index']:.4f}`) to **{wins['per_1yr']['joint_model_c_index_6dp']:.6f}** (`{wins['per_1yr']['joint_model_c_index']:.4f}`; compare PhenoAge alone **{cidx['phenoage_alone_6dp']:.6f}** -> `{cidx['phenoage_alone']:.4f}`, confirming the shared 4-decimal `0.8534` is rounding). Because creatinine (`+0.0095 * umol/L`) and glucose (`+0.1953 * mmol/L`) enter the Gompertz linear predictor linearly, severe clinical extremes produce +90 to +171.5 years of acceleration (see table below), flattening the log-linear Cox slope per +1 year on unwinsorized data.",
+            f"- **Verified non-drivers in this sample:** Excluding `CRP > 10 mg/dL` removes only `{crp10['excluded_n']}` rows and changes HR minimally (**{crp10['hr']:.4f}**). Linear residualization (`PhenoAge ~ RIDAGEYR`, row 4a) equals the primary per-year HR (**{resid['per_1yr']['hr']:.4f}**) **by construction**, because `RIDAGEYR` is already included linearly in the Cox regression (only SD-scaled HR row 4b differs slightly because `SD(residual) = {resid['sd_years']:.2f}` yrs vs. `SD(raw) = {sd1['sd_years']:.2f}` yrs).",
             "- **Untested hypotheses for the remaining gap below ~1.09:** Even after winsorization, HR per +1 year is 1.0593 rather than ~1.09. Untested hypotheses (not evaluated here) include survey weighting/strata/PSU adjustment, differences in NHANES cycle/age inclusion rules, non-fasting serum glucose (`LBXSGL`) vs. alternative glucose definitions, early-cycle creatinine calibration differences, and NCHS public-use linked mortality perturbation.",
             "",
             "### Top 20 Most Extreme `|Age Acceleration|` Rows (All 9 Markers)",
-            "Inspection of the 20 largest absolute acceleration values (all positive extremes, +90.0 to +171.5 years): all 20 show plausible severe clinical pathology (predominantly end-stage renal-range creatinine 551.6–1,573.5 µmol/L, hyperglycemic crisis glucose up to 43.12 mmol/L, and/or acute CRP/RDW/ALP abnormalities), and 14 of 20 died during follow-up (`MORTSTAT = 1`), rather than obvious coding/sentinel errors.",
+            "Inspection of the 20 largest absolute acceleration values (all positive extremes, +90.0 to +171.5 years): all 20 show values consistent with severe clinical pathology (predominantly end-stage renal-range creatinine 551.6–1,573.5 µmol/L, hyperglycemic crisis glucose up to 43.12 mmol/L, and/or acute CRP/RDW/ALP abnormalities), and 14 of 20 died during follow-up (`MORTSTAT = 1`), rather than obvious coding/sentinel errors.",
             "",
             "| SEQN | Cycle | Age | PhenoAge | Accel | Mort | Months | Alb (g/L) | Creat (µmol/L) | Gluc (mmol/L) | CRP (mg/dL) | Lymph % | MCV (fL) | RDW % | ALP (U/L) | WBC | Assessment |",
             "| ---: | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | :--- |",
